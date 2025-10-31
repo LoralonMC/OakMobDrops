@@ -133,7 +133,7 @@ Created by **Loralon**
 
 - [ExecutableItems](https://www.spigotmc.org/resources/77578/)
 - [ItemsAdder](https://www.spigotmc.org/resources/73355/)
-- [Nexo](https://github.com/oraxen/oraxen)
+- [Nexo](https://mcmodels.net/products/13172/nexo)
 
 ---
 
