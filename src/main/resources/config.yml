@@ -1,0 +1,188 @@
+# OakMobDrops Configuration - Multiple Drops Support
+# Created for Paper 1.21.8 servers
+# Supports ExecutableItems, ItemsAdder, Nexo, and vanilla items
+
+# General Settings
+settings:
+  # Enable debug mode for extra console logging
+  debug: false
+
+  # Should looting enchantment increase drop chances?
+  use-looting-enchantment: true
+
+  # Multiplier per looting level (0.5 = 50% increase per level)
+  # Example: 0.01% base chance with Looting III = 0.01% * (1 + 3*0.5) = 0.025%
+  looting-multiplier: 0.5
+
+  # Allow mobs from spawners to drop custom items? (Global default)
+  # Set to false to prevent spawner farming
+  # Can be overridden per-mob with the 'allow-spawner-drops' setting
+  allow-spawner-drops: false
+
+  # Track spawner tag inheritance for slime splits?
+  inherit-spawner-tag: true
+
+  # Global announcement when someone gets a rare drop
+  # Individual drops can override this or set to null for no announcement
+  # Uses MiniMessage format for colors: https://docs.advntr.dev/minimessage/format.html
+  # Placeholders: %player%, %mob%, %item%, %amount%, %chance%, %chance-fraction%
+  global-announcement: "<gold><bold>⚡</bold></gold> <yellow>%player%</yellow> <gray>just received</gray> <aqua>%amount%x %item%</aqua> <gray>from a</gray> <red>%mob%</red><gray>!</gray>"
+
+  # Play sound when rare drop occurs (only for the player who gets the drop)
+  play-sound: true
+
+  # Sound to play (Bukkit Sound enum)
+  sound: minecraft:ui.toast.challenge_complete
+
+  # Statistics Tracking
+  # Track detailed drop statistics (kills, drops, rates, players)
+  enable-statistics: true
+
+  # How often to auto-save statistics (in minutes)
+  # Set to 0 to only save on shutdown
+  # Stats are always saved on plugin disable
+  statistics-autosave-interval: 5
+
+  # Maximum number of player statistics to keep
+  # Helps prevent file bloat on large servers
+  # Set to -1 for unlimited
+  max-player-stats: 1000
+
+  # Radius (in blocks) to search for nearest player when no killer found
+  # Used when require-player-kill is false
+  drop-recipient-search-radius: 50.0
+
+# Mob Configuration
+# Each mob can have multiple drops with independent chances
+# Entity types: https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/entity/EntityType.html
+mobs:
+  ZOMBIE:
+    enabled: true
+    # Require player kill for drop?
+    require-player-kill: true
+    # Override global spawner setting for this mob (optional)
+    # If not specified, uses the global 'allow-spawner-drops' setting
+    allow-spawner-drops: false  # Zombies from spawners won't drop pets
+    drops:
+      # EI/IA/Nexo id (ignored for VANILLA)
+      - id: zombie_pet
+        # Drop chance (0.0001 = 0.01% = 1 in 10,000)
+        chance: 0.0001
+        # EXECUTABLE_ITEMS | ITEMSADDER | NEXO | VANILLA
+        type: NEXO
+        item-id: nm_plushie_zombie
+        # Amount can be a range like "5-10" for random amounts
+        amount: 1
+        # Drop at mob location (true) or give directly to player (false)
+        drop-at-location: true
+        # Custom announcement for this drop (overrides global)
+        announcement: "<dark_green><bold>🧟 ZOMBIE PET!</bold></dark_green> <green>%player%</green> <gray>tamed an undead companion!</gray>"
+        play-sound: true
+        # Commands to execute when this drop succeeds (optional)
+        # Placeholders: %player%, %mob%, %item%, %amount%, %chance%, %chance-fraction%
+        # Useful for DiscordSRV integration, economy rewards, etc.
+        commands:
+          - "discordsrv broadcast 🎉 %player% just received a %item% from a %mob%! (%chance-fraction%)"
+          # Example: Give bonus money
+          # - "eco give %player% 1000"
+          # Example: Play special sound
+          # - "playsound %player% minecraft:ui.toast.challenge_complete"
+
+      # Common essence drop
+      - id: zombie_essence
+        chance: 0.05  # 5%
+        type: EXECUTABLE_ITEMS
+        item-id: mob_essence
+        amount: 1-3  # Random amount between 1 and 3
+        drop-at-location: false  # Give directly to player
+        announcement: null  # No announcement for common drops
+        play-sound: false
+
+      # Vanilla bonus drop
+      - id: zombie_gold
+        chance: 0.01  # 1%
+        type: VANILLA
+        # VANILLA only (Ignored if type is not VANILLA)
+        material: GOLD_NUGGET
+        amount: 1-2
+        name: "<gold>Zombie's Gold</gold>"
+        lore:
+          - "<gray>A small piece of gold</gray>"
+          - "<gray>dropped by the undead</gray>"
+        drop-at-location: true
+        announcement: null
+        play-sound: false
+
+  # Example with NAMED SECTIONS format (better organization)
+  SKELETON:
+    enabled: true
+    require-player-kill: true
+    allow-spawner-drops: false
+    drops:
+      pet_drop:
+        chance: 0.0001
+        type: NEXO
+        item-id: nm_plushie_skeleton
+        amount: 1
+        drop-at-location: true
+        announcement: "<gray><bold>💀 SKELETON PET!</bold></gray> <white>%player%</white> <gray>acquired a bony friend!</gray>"
+        play-sound: true
+
+      bone_shard:
+        chance: 0.15
+        type: ITEMSADDER
+        item-id: custom:bone_shard
+        amount: 2-4
+        drop-at-location: true
+        announcement: null
+        play-sound: false
+
+      arrow_bundle:
+        chance: 0.02
+        type: VANILLA
+        material: ARROW
+        amount: 5-10
+        name: "<white>Skeleton's Quiver</white>"
+        drop-at-location: true
+        announcement: "global"  # Use the global announcement for this drop
+        play-sound: true
+
+  CREEPER:
+    enabled: true
+    require-player-kill: true
+    allow-spawner-drops: false
+    drops:
+      pet_drop:
+        chance: 0.5
+        type: EXECUTABLE_ITEMS
+        item-id: creeper_pet
+        amount: 1
+        drop-at-location: true
+        announcement: "<dark_green><bold>💥</bold></dark_green> <green>%player%</green> <gray>obtained a</gray> <dark_green>%item%</dark_green> <gray>(<yellow>%chance%%</yellow> drop rate)!</gray>"
+        play-sound: true
+        # Example with multiple commands
+        commands:
+          - "discordsrv broadcast 💥 %player% got a %item%! (%chance%% chance)"
+          - "eco give %player% 500"
+
+# Tips:
+# - Each drop rolls independently - a mob could drop multiple items in one death!
+# - Use null for announcement to have no message for that drop
+# - Use "global" for announcement to use the global message
+# - Announcements use MiniMessage for formatting (colors, bold, etc.)
+#   Format guide: https://docs.advntr.dev/minimessage/format.html
+# - All placeholders use %% format: %player%, %mob%, %item%, %amount%, %chance%, %chance-fraction%
+# - Amount can be a range like "5-10" for random amounts
+# - Mix and match different plugin types in the same mob's drops
+#
+# Command Execution:
+# - Commands are executed as console when a drop succeeds
+# - Available placeholders (use %% format):
+#   %player% - Player who got the drop
+#   %mob% - Mob type (e.g., "Zombie")
+#   %item% - Item display name
+#   %amount% - Number of items dropped
+#   %chance% - Drop chance as percentage (e.g., "0.01")
+#   %chance-fraction% - Drop chance as fraction (e.g., "1/10,000")
+# - Perfect for DiscordSRV integration, economy rewards, titles, etc.
+# - Commands are optional - leave them out if not needed

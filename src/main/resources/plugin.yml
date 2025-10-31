@@ -1,0 +1,47 @@
+name: OakMobDrops
+version: '1.0.0'
+main: dev.oakheart.oakmobdrops.OakMobDrops
+api-version: '1.21'
+prefix: OakMobDrops
+authors: [ Loralon ]
+description: Advanced mob drop system with multi-backend support and statistics
+
+softdepend: [ExecutableItems, ItemsAdder, Nexo, SCore]
+
+commands:
+  oakmobdrops:
+    description: Main command for OakMobDrops
+    usage: |
+      /<command> - Show help
+      /<command> reload - Reload configuration
+      /<command> stats [type] [page] - View statistics (10 per page)
+      /<command> test <mob> <drop> [player] - Test a drop
+      /<command> clearstats - Reset all statistics
+    aliases: [omd, mobdrops]
+    permission: oakmobdrops.use
+
+permissions:
+  oakmobdrops.use:
+    description: Allows use of the base OakMobDrops command
+    default: op
+
+  oakmobdrops.reload:
+    description: Allows reloading the configuration
+    default: op
+
+  oakmobdrops.stats:
+    description: Allows viewing drop statistics
+    default: op
+
+  oakmobdrops.test:
+    description: Allows testing drops without killing mobs
+    default: op
+
+  oakmobdrops.admin:
+    description: All OakMobDrops permissions
+    default: op
+    children:
+      oakmobdrops.use: true
+      oakmobdrops.reload: true
+      oakmobdrops.stats: true
+      oakmobdrops.test: true
