@@ -61,9 +61,7 @@ public class ExecutableItemsBackend implements DropBackend {
                 get = Optional.class.getMethod("get");
 
                 reflectionInitialized = true;
-                if (debugMode) {
-                    plugin.getLogger().info("[ExecutableItems Backend] Reflection initialized successfully");
-                }
+                plugin.getLogger().info("[ExecutableItems] Detected API successfully");
             } catch (Exception e) {
                 reflectionFailed = true;
                 if (debugMode) {

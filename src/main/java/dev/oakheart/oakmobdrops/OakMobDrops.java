@@ -6,6 +6,8 @@ import dev.oakheart.oakmobdrops.config.DropConfigLoader;
 import dev.oakheart.oakmobdrops.drop.DropProcessor;
 import dev.oakheart.oakmobdrops.model.*;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bstats.bukkit.Metrics;
+import org.bstats.charts.SimplePie;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
@@ -104,6 +106,9 @@ public final class OakMobDrops extends JavaPlugin implements Listener, TabComple
         if (debugMode) {
             getLogger().info("Debug mode is ENABLED - extra logging will be shown");
         }
+
+        // Initialize bStats metrics
+        initializeMetrics();
     }
 
     @Override
@@ -116,6 +121,59 @@ public final class OakMobDrops extends JavaPlugin implements Listener, TabComple
         }
 
         getLogger().info("OakMobDrops has been disabled!");
+    }
+
+    /**
+     * Initialize bStats metrics tracking.
+     */
+    private void initializeMetrics() {
+        int pluginId = 28020;
+        Metrics metrics = new Metrics(this, pluginId);
+
+        // Custom metric: Most used backend type
+        metrics.addCustomChart(new SimplePie("most_used_backend", () -> {
+            Map<String, Integer> backendCounts = new HashMap<>();
+
+            for (MobDropConfig config : mobConfigs.values()) {
+                for (DropEntry drop : config.getDrops()) {
+                    String backendName = drop.getSpec().getType().name();
+                    backendCounts.put(backendName, backendCounts.getOrDefault(backendName, 0) + 1);
+                }
+            }
+
+            if (backendCounts.isEmpty()) {
+                return "None";
+            }
+
+            return backendCounts.entrySet().stream()
+                    .max(Map.Entry.comparingByValue())
+                    .map(Map.Entry::getKey)
+                    .orElse("None");
+        }));
+
+        // Custom metric: Number of configured mob types
+        metrics.addCustomChart(new SimplePie("configured_mobs", () -> {
+            int count = mobConfigs.size();
+            if (count == 0) return "0";
+            if (count <= 5) return "1-5";
+            if (count <= 10) return "6-10";
+            if (count <= 20) return "11-20";
+            return "20+";
+        }));
+
+        // Custom metric: Statistics enabled
+        metrics.addCustomChart(new SimplePie("statistics_enabled", () ->
+            enableStatistics ? "Enabled" : "Disabled"
+        ));
+
+        // Custom metric: Spawner drops allowed
+        metrics.addCustomChart(new SimplePie("spawner_drops", () ->
+            globalAllowSpawnerDrops ? "Allowed" : "Blocked"
+        ));
+
+        if (debugMode) {
+            getLogger().info("bStats metrics initialized successfully!");
+        }
     }
 
     /**
@@ -162,6 +220,19 @@ public final class OakMobDrops extends JavaPlugin implements Listener, TabComple
         // Initialize router (must be done before other components)
         if (router == null) {
             router = new DropRouter(this);
+
+            // Log available backends
+            List<String> availableBackends = new ArrayList<>();
+            if (router.forType(DropType.EXECUTABLE_ITEMS).isPresent()) availableBackends.add("ExecutableItems");
+            if (router.forType(DropType.ITEMSADDER).isPresent()) availableBackends.add("ItemsAdder");
+            if (router.forType(DropType.NEXO).isPresent()) availableBackends.add("Nexo");
+            availableBackends.add("Vanilla");
+
+            if (availableBackends.size() == 1) {
+                getLogger().info("Available backend: Vanilla only");
+            } else {
+                getLogger().info("Available backends: " + String.join(", ", availableBackends));
+            }
         }
 
         // Initialize announcement manager
@@ -297,7 +368,7 @@ public final class OakMobDrops extends JavaPlugin implements Listener, TabComple
 
         // Mark as eligible kill
         if (statistics != null && enableStatistics) {
-            statistics.recordEligibleKill(entityType);
+            statistics.recordEligibleKill(entityType, killer);
         }
 
         // Process all drops
@@ -351,11 +422,21 @@ public final class OakMobDrops extends JavaPlugin implements Listener, TabComple
         if (subCommand.equals("stats") && sender.hasPermission("oakmobdrops.stats")) {
             if (args.length == 2) {
                 return filterStartsWith(Arrays.asList(
-                        "overview", "expected", "variance", "rarest", "rare",
-                        "mobs", "breakdown", "farmers", "top", "players"
+                        "overview", "rarest", "mobs", "players", "variance"
                 ), args[1]);
             }
             if (args.length == 3) {
+                // If "players" is selected, suggest player names for per-player stats
+                if (args[1].equalsIgnoreCase("players")) {
+                    return filterStartsWith(
+                            Bukkit.getOnlinePlayers().stream()
+                                    .map(Player::getName)
+                                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                                    .toList(),
+                            args[2]
+                    );
+                }
+                // Otherwise suggest page numbers
                 return filterStartsWith(Arrays.asList("1", "2", "3", "4", "5"), args[2]);
             }
         }
@@ -474,16 +555,28 @@ public final class OakMobDrops extends JavaPlugin implements Listener, TabComple
             return true;
         }
 
+        // Handle per-player stats: /oakmobdrops stats players <playername>
+        if (args.length >= 3 && args[1].equalsIgnoreCase("players")) {
+            String playerName = args[2];
+            List<String> report = statistics.generatePlayerReport(playerName);
+
+            for (String line : report) {
+                sender.sendMessage(miniMessage.deserialize(line));
+            }
+            return true;
+        }
+
+        // Handle paginated reports
         DropStatistics.ReportType reportType = DropStatistics.ReportType.OVERVIEW;
         int limit = 10;  // Always 10 entries per page
         int page = 1;
 
         if (args.length >= 2) {
             reportType = switch (args[1].toLowerCase(Locale.ROOT)) {
-                case "rare", "rarest" -> DropStatistics.ReportType.RAREST_DROPS;
-                case "farmers", "top", "players" -> DropStatistics.ReportType.TOP_FARMERS;
-                case "mobs", "breakdown" -> DropStatistics.ReportType.MOB_BREAKDOWN;
-                case "variance", "expected" -> DropStatistics.ReportType.EXPECTED_VS_ACTUAL;
+                case "rarest" -> DropStatistics.ReportType.RAREST_DROPS;
+                case "players" -> DropStatistics.ReportType.TOP_FARMERS;
+                case "mobs" -> DropStatistics.ReportType.MOB_BREAKDOWN;
+                case "variance" -> DropStatistics.ReportType.EXPECTED_VS_ACTUAL;
                 default -> DropStatistics.ReportType.OVERVIEW;
             };
         }

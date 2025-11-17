@@ -5,6 +5,42 @@ All notable changes to OakMobDrops will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-11-17
+
+### Added
+- **bStats Integration**: Anonymous usage statistics with 4 custom metrics
+  - Most used backend type
+  - Total drops configured
+  - Average drop chance across all drops
+  - Announcement usage percentage
+- **Backend Version Detection**: All backends now log their detected API version on startup
+- **Per-Player Statistics**: New command `/oakmobdrops stats players <name>` for detailed player breakdown
+- **Enhanced Player Tracking**:
+  - First seen timestamp
+  - Eligible kills counter (kills that were eligible for drops)
+  - Spawner kills counter (kills from spawner-spawned mobs)
+  - Favorite drops list
+- **Per-Mob Breakdown**: Statistics now show eligible and spawner kills per mob type
+  - Compact display format: "Zombie: 543 (500 eligible, 100 spawner)"
+
+### Changed
+- **Statistics Commands**: Simplified command structure with clear, single-purpose aliases
+  - `/oakmobdrops stats` - Overview
+  - `/oakmobdrops stats rarest` - Rarest drops
+  - `/oakmobdrops stats players` - Top farmers leaderboard
+  - `/oakmobdrops stats players <name>` - Per-player detailed stats
+  - `/oakmobdrops stats mobs` - Mob breakdown
+  - `/oakmobdrops stats variance` - Expected vs actual rates
+- **Percentage Formatting**: Smart formatting removes trailing zeros (10.0000% → 10%, 10.0005% → 10.0005%)
+
+### Fixed
+- Statistics persistence now correctly saves all per-mob tracking data
+- Stats file backwards compatibility with existing v1.0.0 stats files
+
+### Technical
+- Updated shadow plugin to v8.1.8 for Java 21 compatibility
+- bStats dependency added with proper relocation to prevent conflicts
+
 ## [1.0.0] - 2025-10-31
 
 ### Initial Release
@@ -47,4 +83,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Persistent data containers for spawner tracking
 - ThreadLocalRandom for efficient random number generation
 
-[1.0.0]: https://github.com/YOUR_USERNAME/OakMobDrops/releases/tag/v1.0.0
+[1.1.0]: https://github.com/LoralonMC/OakMobDrops/releases/tag/v1.1.0
+[1.0.0]: https://github.com/LoralonMC/OakMobDrops/releases/tag/v1.0.0

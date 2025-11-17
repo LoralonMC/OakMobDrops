@@ -55,27 +55,32 @@ public class ItemsAdderBackend implements DropBackend {
                 getItemStack = customStackClass.getMethod("getItemStack");
 
                 // Try to get display name method (may vary by version)
+                String displayNameMethod = "unknown";
                 try {
                     getDisplayName = customStackClass.getMethod("getDisplayName");
+                    displayNameMethod = "getDisplayName";
                 } catch (NoSuchMethodException e) {
                     try {
                         getDisplayName = customStackClass.getMethod("displayName");
+                        displayNameMethod = "displayName";
                     } catch (NoSuchMethodException ignored) {}
                 }
 
                 // Try to get lore method (may vary by version)
+                String loreMethod = "unknown";
                 try {
                     getLore = customStackClass.getMethod("getLore");
+                    loreMethod = "getLore";
                 } catch (NoSuchMethodException e) {
                     try {
                         getLore = customStackClass.getMethod("lore");
+                        loreMethod = "lore";
                     } catch (NoSuchMethodException ignored) {}
                 }
 
                 reflectionInitialized = true;
-                if (debugMode) {
-                    plugin.getLogger().info("[ItemsAdder Backend] Reflection initialized successfully");
-                }
+                plugin.getLogger().info("[ItemsAdder] Detected API (methods: " +
+                    displayNameMethod + "/" + loreMethod + ")");
             } catch (Exception e) {
                 reflectionFailed = true;
                 if (debugMode) {

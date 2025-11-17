@@ -68,18 +68,14 @@ public class NexoBackend implements DropBackend {
                 try {
                     itemFromId = nexoItemsClass.getMethod("itemFromId", String.class);
                     usingNewAPI = true;
-                    if (debugMode) {
-                        plugin.getLogger().info("[Nexo Backend] Using new API (itemFromId)");
-                    }
+                    plugin.getLogger().info("[Nexo] Detected API version: 2.0+ (new API)");
                 } catch (NoSuchMethodException e) {
                     // Fall back to old API
                     optionalItemFromId = nexoItemsClass.getMethod("optionalItemFromId", String.class);
                     isPresent = java.util.Optional.class.getMethod("isPresent");
                     get = java.util.Optional.class.getMethod("get");
                     usingNewAPI = false;
-                    if (debugMode) {
-                        plugin.getLogger().info("[Nexo Backend] Using old API (optionalItemFromId)");
-                    }
+                    plugin.getLogger().info("[Nexo] Detected API version: Legacy (pre-2.0)");
                 }
 
                 reflectionInitialized = true;

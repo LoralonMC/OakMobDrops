@@ -101,6 +101,29 @@ public class DropStatistics {
                         k -> new PlayerStats(killer.getName())
                 );
                 pStats.mobsKilled++;
+                if (fromSpawner) {
+                    pStats.spawnerKills++;
+                }
+
+                // Initialize maps if null (for backwards compatibility with old stats)
+                if (pStats.mobKillCounts == null) {
+                    pStats.mobKillCounts = new HashMap<>();
+                }
+                if (pStats.mobSpawnerKills == null) {
+                    pStats.mobSpawnerKills = new HashMap<>();
+                }
+
+                pStats.mobKillCounts.put(mobKey, pStats.mobKillCounts.getOrDefault(mobKey, 0L) + 1);
+
+                if (fromSpawner) {
+                    pStats.mobSpawnerKills.put(mobKey, pStats.mobSpawnerKills.getOrDefault(mobKey, 0L) + 1);
+                }
+
+                // Initialize firstSeen if null (backwards compatibility)
+                if (pStats.firstSeen == null) {
+                    pStats.firstSeen = pStats.lastSeen != null ? pStats.lastSeen : LocalDateTime.now();
+                }
+
                 pStats.playerName = killer.getName(); // Update name in case it changed
                 pStats.lastSeen = LocalDateTime.now();
 
@@ -111,13 +134,27 @@ public class DropStatistics {
     }
 
     // Track kills that passed eligibility checks
-    public void recordEligibleKill(EntityType mob) {
+    public void recordEligibleKill(EntityType mob, Player killer) {
         synchronized (mu) {
             totalEligibleKills++;
 
             String mobKey = mob.name();
             MobStats stats = mobStats.computeIfAbsent(mobKey, k -> new MobStats());
             stats.eligibleKills++;
+
+            // Track for player
+            if (killer != null) {
+                PlayerStats pStats = playerStats.get(killer.getUniqueId());
+                if (pStats != null) {
+                    pStats.eligibleKills++;
+
+                    // Initialize map if null (backwards compatibility)
+                    if (pStats.mobEligibleKills == null) {
+                        pStats.mobEligibleKills = new HashMap<>();
+                    }
+                    pStats.mobEligibleKills.put(mobKey, pStats.mobEligibleKills.getOrDefault(mobKey, 0L) + 1);
+                }
+            }
         }
     }
 
@@ -161,6 +198,13 @@ public class DropStatistics {
                         k -> new PlayerStats(recipient.getName())
                 );
                 pStats.dropsReceived++;
+
+                // Initialize map if null (for backwards compatibility with old stats)
+                if (pStats.dropCounts == null) {
+                    pStats.dropCounts = new HashMap<>();
+                }
+                pStats.dropCounts.put(dropKey, pStats.dropCounts.getOrDefault(dropKey, 0L) + 1);
+
                 pStats.playerName = recipient.getName(); // Update name
                 pStats.lastSeen = LocalDateTime.now();
 
@@ -210,10 +254,28 @@ public class DropStatistics {
                 PlayerStats c = new PlayerStats();
                 c.playerName = p.playerName;
                 c.mobsKilled = p.mobsKilled;
+                c.eligibleKills = p.eligibleKills;
+                c.spawnerKills = p.spawnerKills;
                 c.dropsReceived = p.dropsReceived;
                 c.rarestDropChance = p.rarestDropChance;
                 c.rarestDropName = p.rarestDropName;
+                c.firstSeen = p.firstSeen; // LocalDateTime is immutable
                 c.lastSeen = p.lastSeen; // LocalDateTime is immutable
+
+                // Deep copy the new maps
+                if (p.mobKillCounts != null) {
+                    c.mobKillCounts = new HashMap<>(p.mobKillCounts);
+                }
+                if (p.mobEligibleKills != null) {
+                    c.mobEligibleKills = new HashMap<>(p.mobEligibleKills);
+                }
+                if (p.mobSpawnerKills != null) {
+                    c.mobSpawnerKills = new HashMap<>(p.mobSpawnerKills);
+                }
+                if (p.dropCounts != null) {
+                    c.dropCounts = new HashMap<>(p.dropCounts);
+                }
+
                 playerCopy.put(e.getKey(), c);
             }
 
@@ -342,7 +404,7 @@ public class DropStatistics {
                 report.add("<gray>Total items dropped:</gray> <white>" + String.format("%,d", totalDrops) + "</white>");
 
                 double eligibleRate = totalEligible > 0 ? (totalDrops * 100.0 / totalEligible) : 0;
-                report.add("<gray>Drop rate (eligible):</gray> <white>" + String.format("%.3f%%", eligibleRate) + "</white>");
+                report.add("<gray>Drop rate (eligible):</gray> <white>" + formatPercent(eligibleRate) + "</white>");
                 report.add("<gray>Unique drops tracked:</gray> <white>" + dropSnapshot.size() + "</white>");
                 report.add("<gray>Players tracked:</gray> <white>" + playerSnapshot.size() + "</white>");
             }
@@ -373,14 +435,14 @@ public class DropStatistics {
                             report.add("  <gray>Attempts:</gray> <white>" + String.format("%,d", d.attempts) +
                                     "</white> <gray>| Successes:</gray> <white>" + d.timesDropped +
                                     "</white> <gray>(≈" + Math.round(d.expected) + " expected)</gray>");
-                            report.add("  <gray>Expected:</gray> <white>" + String.format("%.4f%%", expRate * 100) +
-                                    "</white> <gray>| Actual:</gray> <white>" + String.format("%.4f%%", actRate * 100) +
+                            report.add("  <gray>Expected:</gray> <white>" + formatPercent(expRate * 100) +
+                                    "</white> <gray>| Actual:</gray> <white>" + formatPercent(actRate * 100) +
                                     "</white>");
 
                             String varianceColor = variance >= 0 ? "green" : "red";
                             String varianceSign = variance >= 0 ? "+" : "";
                             report.add("  <gray>Variance:</gray> <" + varianceColor + ">" +
-                                    varianceSign + String.format("%.1f%%", variance) + "</" + varianceColor + ">");
+                                    varianceSign + formatPercent(variance) + "</" + varianceColor + ">");
                         });
             }
 
@@ -403,7 +465,7 @@ public class DropStatistics {
                             report.add("<yellow>" + d.dropId + "</yellow> <gray>from</gray> <red>" + formatEntityName(d.mobType) + "</red>");
                             report.add("  <gray>Successes:</gray> <white>" + d.timesDropped + "</white>"
                                     + " <gray>| Attempts:</gray> <white>" + String.format("%,d", d.attempts) + "</white>"
-                                    + " <gray>| Actual:</gray> <white>" + String.format("%.4f%%", actual * 100) + "</white>");
+                                    + " <gray>| Actual:</gray> <white>" + formatPercent(actual * 100) + "</white>");
                             if (eligibleKillsForMob  > 0) {
                                 report.add("  <gray>Eligible kills (mob):</gray> <white>" + String.format("%,d", eligibleKillsForMob ) + "</white>");
                             }
@@ -426,10 +488,10 @@ public class DropStatistics {
                             report.add("<yellow>" + p.playerName + "</yellow>");
                             report.add("  <gray>Kills:</gray> <white>" + String.format("%,d", p.mobsKilled) + "</white>"
                                     + " <gray>| Drops:</gray> <white>" + String.format("%,d", p.dropsReceived) + "</white>"
-                                    + " <gray>| Ratio:</gray> <white>" + String.format("%.2f%%", ratio) + "</white>");
+                                    + " <gray>| Ratio:</gray> <white>" + formatPercent(ratio) + "</white>");
                             if (p.rarestDropName != null) {
                                 report.add("  <gray>Rarest:</gray> <aqua>" + p.rarestDropName + "</aqua>"
-                                        + " <gray>(</gray><white>" + String.format("%.4f%%", p.rarestDropChance * 100) + "</white><gray>)</gray>");
+                                        + " <gray>(</gray><white>" + formatPercent(p.rarestDropChance * 100) + "</white><gray>)</gray>");
                             }
                         });
             }
@@ -453,13 +515,188 @@ public class DropStatistics {
                             report.add("  <gray>Killed:</gray> <white>" + String.format("%,d", s.totalKilled) + "</white>"
                                     + " <gray>| Eligible:</gray> <white>" + String.format("%,d", s.eligibleKills) + "</white>"
                                     + " <gray>| Dropped:</gray> <white>" + String.format("%,d", s.totalDropped) + "</white>"
-                                    + " <gray>(</gray><white>" + String.format("%.3f%%", dropRate) + "</white><gray>)</gray>");
+                                    + " <gray>(</gray><white>" + formatPercent(dropRate) + "</white><gray>)</gray>");
                             if (s.spawnerKills > 0) {
                                 report.add("  <gray>Spawner kills:</gray> <white>" + String.format("%,d", s.spawnerKills) + "</white>"
-                                        + " <gray>(</gray><white>" + String.format("%.1f%%", spawnerPct) + "</white><gray>)</gray>");
+                                        + " <gray>(</gray><white>" + formatPercent(spawnerPct) + "</white><gray>)</gray>");
                             }
                         });
             }
+        }
+
+        return report;
+    }
+
+    /**
+     * Generate a detailed statistics report for a specific player.
+     * @param playerName the player name to look up
+     * @return list of formatted report lines, or empty list if player not found
+     */
+    public List<String> generatePlayerReport(String playerName) {
+        List<String> report = new ArrayList<>();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+        // Snapshot data for thread safety
+        Map<String, MobStats> mobSnapshot;
+        Map<String, ItemDropStats> dropSnapshot;
+        PlayerStats player = null;
+
+        synchronized (mu) {
+            mobSnapshot = new HashMap<>(mobStats);
+            dropSnapshot = new HashMap<>(dropStats);
+
+            // Find player by name (case-insensitive)
+            for (PlayerStats ps : playerStats.values()) {
+                if (ps.playerName.equalsIgnoreCase(playerName)) {
+                    player = ps;
+                    break;
+                }
+            }
+        }
+
+        if (player == null) {
+            report.add("<red>No statistics found for player '" + playerName + "'</red>");
+            return report;
+        }
+
+        // Header
+        report.add("<gold><bold>=== Player Statistics: " + player.playerName + " ===</bold></gold>");
+        if (player.firstSeen != null) {
+            report.add("<gray>First tracked:</gray> <white>" + player.firstSeen.format(formatter) + "</white>");
+        }
+        report.add("<gray>Last seen:</gray> <white>" + player.lastSeen.format(formatter) + "</white>");
+        report.add("");
+
+        // Calculate favorites
+        String favoriteMob = null;
+        long favoriteMobKills = 0;
+        if (player.mobKillCounts != null && !player.mobKillCounts.isEmpty()) {
+            var favorite = player.mobKillCounts.entrySet().stream()
+                    .max(Map.Entry.comparingByValue())
+                    .orElse(null);
+            if (favorite != null) {
+                favoriteMob = formatEntityName(favorite.getKey());
+                favoriteMobKills = favorite.getValue();
+            }
+        }
+
+        String favoriteDrop = null;
+        long favoriteDropCount = 0;
+        if (player.dropCounts != null && !player.dropCounts.isEmpty()) {
+            var favorite = player.dropCounts.entrySet().stream()
+                    .max(Map.Entry.comparingByValue())
+                    .orElse(null);
+            if (favorite != null) {
+                String[] parts = favorite.getKey().split(":", 2);
+                favoriteDrop = parts.length > 1 ? parts[1] : favorite.getKey();
+                favoriteDropCount = favorite.getValue();
+            }
+        }
+
+        // Overall stats
+        report.add("<yellow><bold>Overall Statistics:</bold></yellow>");
+        report.add("<gray>Total mobs killed:</gray> <white>" + String.format("%,d", player.mobsKilled) + "</white>");
+
+        if (player.eligibleKills > 0) {
+            double eligiblePct = (player.mobsKilled > 0) ? (player.eligibleKills * 100.0 / player.mobsKilled) : 0.0;
+            report.add("<gray>Eligible kills:</gray> <white>" + String.format("%,d", player.eligibleKills) +
+                    "</white> <gray>(</gray><white>" + formatPercent(eligiblePct) + "</white><gray>)</gray>");
+        }
+
+        if (player.spawnerKills > 0) {
+            double spawnerPct = (player.mobsKilled > 0) ? (player.spawnerKills * 100.0 / player.mobsKilled) : 0.0;
+            report.add("<gray>Spawner kills:</gray> <white>" + String.format("%,d", player.spawnerKills) +
+                    "</white> <gray>(</gray><white>" + formatPercent(spawnerPct) + "</white><gray>)</gray>");
+        }
+
+        report.add("<gray>Total drops received:</gray> <white>" + String.format("%,d", player.dropsReceived) + "</white>");
+
+        double ratio = (player.mobsKilled > 0) ? (player.dropsReceived * 100.0 / player.mobsKilled) : 0.0;
+        report.add("<gray>Drop ratio:</gray> <white>" + formatPercent(ratio) + "</white>");
+
+        if (player.rarestDropName != null) {
+            report.add("<gray>Rarest drop:</gray> <aqua>" + player.rarestDropName + "</aqua> " +
+                    "<gray>(</gray><white>" + formatPercent(player.rarestDropChance * 100) + "</white><gray>)</gray>");
+        }
+
+        // Show favorites
+        if (favoriteMob != null) {
+            report.add("<gray>Favorite mob:</gray> <red>" + favoriteMob + "</red> " +
+                    "<gray>(</gray><white>" + String.format("%,d", favoriteMobKills) + " kills</white><gray>)</gray>");
+        }
+        if (favoriteDrop != null) {
+            report.add("<gray>Most common drop:</gray> <aqua>" + favoriteDrop + "</aqua> " +
+                    "<gray>(</gray><white>" + String.format("%,d", favoriteDropCount) + " times</white><gray>)</gray>");
+        }
+
+        report.add("");
+
+        // Kills by mob type
+        if (player.mobKillCounts != null && !player.mobKillCounts.isEmpty()) {
+            report.add("<yellow><bold>Kills by Mob Type:</bold></yellow>");
+            final Map<String, Long> eligibleMap = player.mobEligibleKills;
+            final Map<String, Long> spawnerMap = player.mobSpawnerKills;
+            player.mobKillCounts.entrySet().stream()
+                    .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                    .forEach(e -> {
+                        String mobType = e.getKey();
+                        long totalKills = e.getValue();
+                        long eligibleKills = (eligibleMap != null) ?
+                                eligibleMap.getOrDefault(mobType, 0L) : 0L;
+                        long spawnerKills = (spawnerMap != null) ?
+                                spawnerMap.getOrDefault(mobType, 0L) : 0L;
+
+                        // Compact format: Zombie: 543 (500 eligible, 100 spawner)
+                        StringBuilder line = new StringBuilder();
+                        line.append("  <gray>•</gray> <red>").append(formatEntityName(mobType)).append(":</red> ");
+                        line.append("<white>").append(String.format("%,d", totalKills)).append("</white>");
+
+                        // Show details if available
+                        if (eligibleKills > 0 || spawnerKills > 0) {
+                            line.append(" <gray>(</gray>");
+                            if (eligibleKills > 0) {
+                                line.append("<white>").append(String.format("%,d", eligibleKills)).append(" eligible</white>");
+                            }
+                            if (spawnerKills > 0) {
+                                if (eligibleKills > 0) line.append("<gray>, </gray>");
+                                line.append("<white>").append(String.format("%,d", spawnerKills)).append(" spawner</white>");
+                            }
+                            line.append("<gray>)</gray>");
+                        }
+
+                        report.add(line.toString());
+                    });
+            report.add("");
+        } else if (player.mobKillCounts == null) {
+            report.add("<gray><i>(Detailed mob kill breakdown not available for this player - stats tracked from plugin update onwards)</i></gray>");
+            report.add("");
+        }
+
+        // Drops received
+        if (player.dropCounts != null && !player.dropCounts.isEmpty()) {
+            report.add("<yellow><bold>Drops Received:</bold></yellow>");
+            final long totalDropsReceived = player.dropsReceived;
+            final int totalUniqueDrops = player.dropCounts.size();
+            player.dropCounts.entrySet().stream()
+                    .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                    .limit(15)  // Show top 15 drops
+                    .forEach(e -> {
+                        // Parse mob:dropId format
+                        String[] parts = e.getKey().split(":", 2);
+                        String mobType = parts.length > 0 ? formatEntityName(parts[0]) : "Unknown";
+                        String dropId = parts.length > 1 ? parts[1] : e.getKey();
+
+                        double pct = (totalDropsReceived > 0) ? (e.getValue() * 100.0 / totalDropsReceived) : 0.0;
+                        report.add("  <gray>•</gray> <aqua>" + dropId + "</aqua> <gray>from</gray> <red>" + mobType + ":</red> " +
+                                "<white>" + String.format("%,d", e.getValue()) + "</white> " +
+                                "<gray>(</gray><white>" + formatPercent(pct) + "</white><gray>)</gray>");
+                    });
+
+            if (totalUniqueDrops > 15) {
+                report.add("  <gray><i>... and " + (totalUniqueDrops - 15) + " more</i></gray>");
+            }
+        } else if (player.dropCounts == null) {
+            report.add("<gray><i>(Detailed drop breakdown not available for this player - stats tracked from plugin update onwards)</i></gray>");
         }
 
         return report;
@@ -553,14 +790,22 @@ public class DropStatistics {
     public static class PlayerStats {
         String playerName;
         long mobsKilled = 0;
+        long eligibleKills = 0;       // NEW: Kills that were eligible for drops
+        long spawnerKills = 0;        // NEW: Kills from spawner mobs
         long dropsReceived = 0;
         double rarestDropChance = 1.0;
         String rarestDropName;
+        LocalDateTime firstSeen;      // NEW: When player was first tracked
         LocalDateTime lastSeen;
+        Map<String, Long> mobKillCounts = new HashMap<>();       // mob type -> kill count
+        Map<String, Long> mobEligibleKills = new HashMap<>();    // mob type -> eligible kills
+        Map<String, Long> mobSpawnerKills = new HashMap<>();     // mob type -> spawner kills
+        Map<String, Long> dropCounts = new HashMap<>();          // drop ID -> times received
 
         public PlayerStats() {}
         public PlayerStats(String name) {
             this.playerName = name;
+            this.firstSeen = LocalDateTime.now();
         }
     }
 
@@ -590,6 +835,20 @@ public class DropStatistics {
             sb.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
         }
         return sb.toString();
+    }
+
+    /**
+     * Format a percentage value, removing trailing zeros.
+     * Examples: 10.0000 -> "10%", 10.5000 -> "10.5%", 10.0005 -> "10.0005%"
+     */
+    private String formatPercent(double value) {
+        // Format with enough precision to capture detail
+        String formatted = String.format("%.4f", value);
+        // Remove trailing zeros after decimal point
+        formatted = formatted.replaceAll("(\\.\\d*?)0+$", "$1");
+        // Remove decimal point if no decimals remain
+        formatted = formatted.replaceAll("\\.$", "");
+        return formatted + "%";
     }
 
     /**
