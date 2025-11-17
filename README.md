@@ -8,7 +8,12 @@ A feature-rich Minecraft Paper plugin for advanced custom mob drop management wi
 - **Multiple Independent Drops**: Configure multiple drops per mob, each with independent drop rates
 - **Looting Enchantment Support**: Configurable looting enchantment multipliers for drop chances
 - **Spawner Tracking**: Track and control drops from spawner-spawned mobs, with slime split inheritance
-- **Comprehensive Statistics**: Track kills, drops, rates, and top farmers with detailed analytics
+- **Comprehensive Statistics**:
+  - Detailed per-player statistics with first seen, eligible kills, spawner kills, and favorite drops
+  - Per-mob breakdowns showing total, eligible, and spawner kills
+  - Top farmers leaderboard and rarest drops tracking
+  - Expected vs actual drop rate variance analysis
+- **bStats Integration**: Anonymous usage statistics to help improve the plugin
 - **Announcement System**: Customizable global and per-drop announcements using MiniMessage formatting
 - **Command Execution**: Execute console commands when rare drops occur (perfect for DiscordSRV integration, economy rewards, etc.)
 - **Flexible Configuration**: Range-based amounts, per-mob settings, and location-based or direct drops
@@ -83,10 +88,11 @@ See the included `config.yml` for comprehensive examples and documentation.
 ### Statistics Types
 
 - `overview` - General statistics summary
-- `rare`/`rarest` - Rarest drops obtained
-- `farmers`/`top`/`players` - Top players by kills
-- `mobs`/`breakdown` - Per-mob statistics
-- `variance`/`expected` - Expected vs actual drop rates
+- `rarest` - Rarest drops obtained by all players
+- `players` - Top farmers leaderboard (sorted by kills)
+- `players <name>` - Detailed stats for a specific player (kills, drops, favorite items, per-mob breakdown)
+- `mobs` - Per-mob statistics breakdown
+- `variance` - Expected vs actual drop rates
 
 ## Permissions
 
@@ -101,7 +107,7 @@ See the included `config.yml` for comprehensive examples and documentation.
 ## Building from Source
 
 ```bash
-git clone https://github.com/YourUsername/OakMobDrops.git
+git clone https://github.com/LoralonMC/OakMobDrops.git
 cd OakMobDrops
 ./gradlew build
 ```
@@ -128,6 +134,7 @@ Created by **Loralon**
 
 - [Paper API](https://papermc.io/) - Minecraft server platform
 - [Kyori Adventure](https://docs.advntr.dev/) - Text formatting and messaging
+- [bStats](https://bstats.org/) - Plugin metrics and analytics
 
 ### Supported Plugins
 
