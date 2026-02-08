@@ -10,7 +10,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,20 +24,20 @@ public class NexoBackend implements DropBackend {
     private final boolean debugMode;
     private volatile boolean itemsReady = false;
 
-    // Cached reflection methods
-    private static volatile Method itemFromId;
-    private static volatile Method optionalItemFromId;
-    private static volatile Method isPresent;
-    private static volatile Method get;
-    private static volatile Method getItemName;
-    private static volatile Method getDisplayName;
-    private static volatile Method getLore;
-    private static volatile Method setAmount;
-    private static volatile Method getFinalItemStack;
-    private static volatile Method build;
-    private static volatile boolean reflectionInitialized = false;
-    private static volatile boolean reflectionFailed = false;
-    private static volatile boolean usingNewAPI = false;
+    // Cached reflection methods (instance-level to avoid stale state across reloads)
+    private volatile Method apiItemFromId;
+    private volatile Method apiOptionalItemFromId;
+    private volatile Method optionalIsPresent;
+    private volatile Method optionalGet;
+    private volatile Method apiGetItemName;
+    private volatile Method apiGetDisplayName;
+    private volatile Method apiGetLore;
+    private volatile Method apiSetAmount;
+    private volatile Method apiGetFinalItemStack;
+    private volatile Method apiBuild;
+    private volatile boolean reflectionInitialized = false;
+    private volatile boolean reflectionFailed = false;
+    private volatile boolean usingNewAPI = false;
 
     public NexoBackend(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -48,43 +47,33 @@ public class NexoBackend implements DropBackend {
     }
 
     /**
-     * Initialize reflection methods once.
+     * Initialize reflection methods.
      * Attempts to use new API first, falls back to old API.
      */
     private void initializeReflection() {
-        if (reflectionInitialized || reflectionFailed) {
-            return;
-        }
+        try {
+            Class<?> nexoItemsClass = Class.forName("com.nexomc.nexo.api.NexoItems");
 
-        synchronized (NexoBackend.class) {
-            if (reflectionInitialized || reflectionFailed) {
-                return;
+            // Try new API first
+            try {
+                apiItemFromId = nexoItemsClass.getMethod("itemFromId", String.class);
+                usingNewAPI = true;
+                plugin.getLogger().info("[Nexo] Detected API version: 2.0+ (new API)");
+            } catch (NoSuchMethodException e) {
+                // Fall back to old API
+                apiOptionalItemFromId = nexoItemsClass.getMethod("optionalItemFromId", String.class);
+                optionalIsPresent = java.util.Optional.class.getMethod("isPresent");
+                optionalGet = java.util.Optional.class.getMethod("get");
+                usingNewAPI = false;
+                plugin.getLogger().info("[Nexo] Detected API version: Legacy (pre-2.0)");
             }
 
-            try {
-                Class<?> nexoItemsClass = Class.forName("com.nexomc.nexo.api.NexoItems");
+            reflectionInitialized = true;
 
-                // Try new API first
-                try {
-                    itemFromId = nexoItemsClass.getMethod("itemFromId", String.class);
-                    usingNewAPI = true;
-                    plugin.getLogger().info("[Nexo] Detected API version: 2.0+ (new API)");
-                } catch (NoSuchMethodException e) {
-                    // Fall back to old API
-                    optionalItemFromId = nexoItemsClass.getMethod("optionalItemFromId", String.class);
-                    isPresent = java.util.Optional.class.getMethod("isPresent");
-                    get = java.util.Optional.class.getMethod("get");
-                    usingNewAPI = false;
-                    plugin.getLogger().info("[Nexo] Detected API version: Legacy (pre-2.0)");
-                }
-
-                reflectionInitialized = true;
-
-            } catch (Exception e) {
-                reflectionFailed = true;
-                if (debugMode) {
-                    plugin.getLogger().warning("[Nexo Backend] Reflection initialization failed: " + e.getMessage());
-                }
+        } catch (Exception e) {
+            reflectionFailed = true;
+            if (debugMode) {
+                plugin.getLogger().warning("[Nexo Backend] Reflection initialization failed: " + e.getMessage());
             }
         }
     }
@@ -170,42 +159,46 @@ public class NexoBackend implements DropBackend {
      */
     @Nullable
     private ItemStack buildItemStack(DropSpec spec) {
-        if (!isPresent() || spec.getId() == null) {
+        if (!isPresent() || spec.id() == null) {
             return null;
         }
 
         try {
-            Object builder = getBuilder(spec.getId());
+            Object builder = getBuilder(spec.id());
             if (builder == null) {
                 if (!itemsReady && debugMode) {
-                    plugin.getLogger().fine("[Nexo] Items not ready yet: " + spec.getId());
+                    plugin.getLogger().fine("[Nexo] Items not ready yet: " + spec.id());
                 }
                 return null;
             }
 
-            // Try to set amount on the builder
-            if (setAmount == null) {
+            // Try to set amount on the builder (try primitive int first, then boxed Integer)
+            if (apiSetAmount == null) {
                 try {
-                    setAmount = builder.getClass().getMethod("setAmount", Integer.class);
-                } catch (NoSuchMethodException ignored) {}
+                    apiSetAmount = builder.getClass().getMethod("setAmount", int.class);
+                } catch (NoSuchMethodException e) {
+                    try {
+                        apiSetAmount = builder.getClass().getMethod("setAmount", Integer.class);
+                    } catch (NoSuchMethodException ignored) {}
+                }
             }
 
-            if (setAmount != null) {
+            if (apiSetAmount != null) {
                 try {
-                    setAmount.invoke(builder, Math.max(1, spec.getAmount()));
+                    apiSetAmount.invoke(builder, Math.max(1, spec.amount()));
                 } catch (Exception ignored) {}
             }
 
             // Get the final item stack
             ItemStack stack = getFinalStack(builder);
             if (stack != null) {
-                stack.setAmount(Math.max(1, spec.getAmount()));
+                stack.setAmount(Math.max(1, spec.amount()));
                 return stack;
             }
 
         } catch (Exception e) {
             if (debugMode) {
-                plugin.getLogger().warning("[Nexo] Failed to build item '" + spec.getId() +
+                plugin.getLogger().warning("[Nexo] Failed to build item '" + spec.id() +
                         "': " + e.getClass().getSimpleName() + " - " + e.getMessage());
             }
         }
@@ -220,19 +213,19 @@ public class NexoBackend implements DropBackend {
     @Nullable
     private Object getBuilder(String itemId) throws Exception {
         if (usingNewAPI) {
-            return itemFromId.invoke(null, itemId);
+            return apiItemFromId.invoke(null, itemId);
         } else {
-            Object optional = optionalItemFromId.invoke(null, itemId);
+            Object optional = apiOptionalItemFromId.invoke(null, itemId);
             if (optional == null) {
                 return null;
             }
 
-            boolean present = (boolean) isPresent.invoke(optional);
+            boolean present = (boolean) optionalIsPresent.invoke(optional);
             if (!present) {
                 return null;
             }
 
-            return get.invoke(optional);
+            return optionalGet.invoke(optional);
         }
     }
 
@@ -243,15 +236,15 @@ public class NexoBackend implements DropBackend {
     @Nullable
     private ItemStack getFinalStack(Object builder) throws Exception {
         // Try getFinalItemStack() first
-        if (getFinalItemStack == null) {
+        if (apiGetFinalItemStack == null) {
             try {
-                getFinalItemStack = builder.getClass().getMethod("getFinalItemStack");
+                apiGetFinalItemStack = builder.getClass().getMethod("getFinalItemStack");
             } catch (NoSuchMethodException ignored) {}
         }
 
-        if (getFinalItemStack != null) {
+        if (apiGetFinalItemStack != null) {
             try {
-                Object result = getFinalItemStack.invoke(builder);
+                Object result = apiGetFinalItemStack.invoke(builder);
                 if (result instanceof ItemStack is) {
                     return is;
                 }
@@ -259,14 +252,14 @@ public class NexoBackend implements DropBackend {
         }
 
         // Fall back to build()
-        if (build == null) {
+        if (apiBuild == null) {
             try {
-                build = builder.getClass().getMethod("build");
+                apiBuild = builder.getClass().getMethod("build");
             } catch (NoSuchMethodException ignored) {}
         }
 
-        if (build != null) {
-            Object result = build.invoke(builder);
+        if (apiBuild != null) {
+            Object result = apiBuild.invoke(builder);
             if (result instanceof ItemStack is) {
                 return is;
             }
@@ -294,29 +287,29 @@ public class NexoBackend implements DropBackend {
             }
 
             // Try getItemName() first (modern API)
-            if (getItemName == null) {
+            if (apiGetItemName == null) {
                 try {
-                    getItemName = builder.getClass().getMethod("getItemName");
+                    apiGetItemName = builder.getClass().getMethod("getItemName");
                 } catch (NoSuchMethodException ignored) {}
             }
 
-            if (getItemName != null) {
+            if (apiGetItemName != null) {
                 try {
-                    Object result = getItemName.invoke(builder);
+                    Object result = apiGetItemName.invoke(builder);
                     if (result instanceof Component c) return c;
                     if (result instanceof String s && !s.isEmpty()) return Component.text(s);
                 } catch (Exception ignored) {}
             }
 
             // Fall back to getDisplayName()
-            if (getDisplayName == null) {
+            if (apiGetDisplayName == null) {
                 try {
-                    getDisplayName = builder.getClass().getMethod("getDisplayName");
+                    apiGetDisplayName = builder.getClass().getMethod("getDisplayName");
                 } catch (NoSuchMethodException ignored) {}
             }
 
-            if (getDisplayName != null) {
-                Object result = getDisplayName.invoke(builder);
+            if (apiGetDisplayName != null) {
+                Object result = apiGetDisplayName.invoke(builder);
                 if (result instanceof Component c) return c;
                 if (result instanceof String s && !s.isEmpty()) return Component.text(s);
             }
@@ -359,18 +352,18 @@ public class NexoBackend implements DropBackend {
             }
 
             // Try getLore() or lore() methods
-            if (getLore == null) {
+            if (apiGetLore == null) {
                 try {
-                    getLore = builder.getClass().getMethod("getLore");
+                    apiGetLore = builder.getClass().getMethod("getLore");
                 } catch (NoSuchMethodException e) {
                     try {
-                        getLore = builder.getClass().getMethod("lore");
+                        apiGetLore = builder.getClass().getMethod("lore");
                     } catch (NoSuchMethodException ignored) {}
                 }
             }
 
-            if (getLore != null) {
-                Object result = getLore.invoke(builder);
+            if (apiGetLore != null) {
+                Object result = apiGetLore.invoke(builder);
                 if (result instanceof List<?> list && !list.isEmpty()) {
                     Object first = list.get(0);
                     if (first instanceof Component) {

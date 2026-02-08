@@ -8,7 +8,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,13 +21,13 @@ public class ItemsAdderBackend implements DropBackend {
     private final JavaPlugin plugin;
     private final boolean debugMode;
 
-    // Cached reflection methods
-    private static volatile Method getInstance;
-    private static volatile Method getItemStack;
-    private static volatile Method getDisplayName;
-    private static volatile Method getLore;
-    private static volatile boolean reflectionInitialized = false;
-    private static volatile boolean reflectionFailed = false;
+    // Cached reflection methods (instance-level to avoid stale state across reloads)
+    private volatile Method apiGetInstance;
+    private volatile Method apiGetItemStack;
+    private volatile Method apiGetDisplayName;
+    private volatile Method apiGetLore;
+    private volatile boolean reflectionInitialized = false;
+    private volatile boolean reflectionFailed = false;
 
     public ItemsAdderBackend(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -37,55 +36,46 @@ public class ItemsAdderBackend implements DropBackend {
     }
 
     /**
-     * Initialize reflection methods once.
+     * Initialize reflection methods.
+     * Called from constructor — safe publication is guaranteed by final field in DropRouter.
      */
     private void initializeReflection() {
-        if (reflectionInitialized || reflectionFailed) {
-            return;
-        }
+        try {
+            Class<?> customStackClass = Class.forName("dev.lone.itemsadder.api.CustomStack");
+            apiGetInstance = customStackClass.getMethod("getInstance", String.class);
+            apiGetItemStack = customStackClass.getMethod("getItemStack");
 
-        synchronized (ItemsAdderBackend.class) {
-            if (reflectionInitialized || reflectionFailed) {
-                return;
+            // Try to get display name method (may vary by version)
+            String displayNameMethod = "unknown";
+            try {
+                apiGetDisplayName = customStackClass.getMethod("getDisplayName");
+                displayNameMethod = "getDisplayName";
+            } catch (NoSuchMethodException e) {
+                try {
+                    apiGetDisplayName = customStackClass.getMethod("displayName");
+                    displayNameMethod = "displayName";
+                } catch (NoSuchMethodException ignored) {}
             }
 
+            // Try to get lore method (may vary by version)
+            String loreMethod = "unknown";
             try {
-                Class<?> customStackClass = Class.forName("dev.lone.itemsadder.api.CustomStack");
-                getInstance = customStackClass.getMethod("getInstance", String.class);
-                getItemStack = customStackClass.getMethod("getItemStack");
-
-                // Try to get display name method (may vary by version)
-                String displayNameMethod = "unknown";
+                apiGetLore = customStackClass.getMethod("getLore");
+                loreMethod = "getLore";
+            } catch (NoSuchMethodException e) {
                 try {
-                    getDisplayName = customStackClass.getMethod("getDisplayName");
-                    displayNameMethod = "getDisplayName";
-                } catch (NoSuchMethodException e) {
-                    try {
-                        getDisplayName = customStackClass.getMethod("displayName");
-                        displayNameMethod = "displayName";
-                    } catch (NoSuchMethodException ignored) {}
-                }
+                    apiGetLore = customStackClass.getMethod("lore");
+                    loreMethod = "lore";
+                } catch (NoSuchMethodException ignored) {}
+            }
 
-                // Try to get lore method (may vary by version)
-                String loreMethod = "unknown";
-                try {
-                    getLore = customStackClass.getMethod("getLore");
-                    loreMethod = "getLore";
-                } catch (NoSuchMethodException e) {
-                    try {
-                        getLore = customStackClass.getMethod("lore");
-                        loreMethod = "lore";
-                    } catch (NoSuchMethodException ignored) {}
-                }
-
-                reflectionInitialized = true;
-                plugin.getLogger().info("[ItemsAdder] Detected API (methods: " +
-                    displayNameMethod + "/" + loreMethod + ")");
-            } catch (Exception e) {
-                reflectionFailed = true;
-                if (debugMode) {
-                    plugin.getLogger().fine("[ItemsAdder Backend] Reflection initialization failed: " + e.getMessage());
-                }
+            reflectionInitialized = true;
+            plugin.getLogger().info("[ItemsAdder] Detected API (methods: " +
+                displayNameMethod + "/" + loreMethod + ")");
+        } catch (Exception e) {
+            reflectionFailed = true;
+            if (debugMode) {
+                plugin.getLogger().fine("[ItemsAdder Backend] Reflection initialization failed: " + e.getMessage());
             }
         }
     }
@@ -139,31 +129,31 @@ public class ItemsAdderBackend implements DropBackend {
      */
     @Nullable
     private ItemStack buildItemStack(DropSpec spec) {
-        if (!isPresent() || spec.getId() == null) {
+        if (!isPresent() || spec.id() == null) {
             return null;
         }
 
         try {
-            Object customStack = getInstance.invoke(null, spec.getId());
+            Object customStack = apiGetInstance.invoke(null, spec.id());
             if (customStack == null) {
                 if (debugMode) {
-                    plugin.getLogger().fine("[ItemsAdder] Item not found: " + spec.getId());
+                    plugin.getLogger().fine("[ItemsAdder] Item not found: " + spec.id());
                 }
                 return null;
             }
 
-            Object itemObject = getItemStack.invoke(customStack);
+            Object itemObject = apiGetItemStack.invoke(customStack);
             if (!(itemObject instanceof ItemStack)) {
                 return null;
             }
 
             ItemStack item = ((ItemStack) itemObject).clone();
-            item.setAmount(Math.max(1, spec.getAmount()));
+            item.setAmount(Math.max(1, spec.amount()));
             return item;
 
-        } catch (IllegalAccessException | InvocationTargetException e) {
+        } catch (Exception e) {
             if (debugMode) {
-                plugin.getLogger().warning("[ItemsAdder] Failed to build item '" + spec.getId() +
+                plugin.getLogger().warning("[ItemsAdder] Failed to build item '" + spec.id() +
                         "': " + e.getClass().getSimpleName() + " - " + e.getMessage());
             }
             return null;
@@ -178,17 +168,17 @@ public class ItemsAdderBackend implements DropBackend {
      */
     @Nullable
     public Component getDisplayName(String itemId) {
-        if (!isPresent() || itemId == null || getDisplayName == null) {
+        if (!isPresent() || itemId == null || apiGetDisplayName == null) {
             return null;
         }
 
         try {
-            Object customStack = getInstance.invoke(null, itemId);
+            Object customStack = apiGetInstance.invoke(null, itemId);
             if (customStack == null) {
                 return null;
             }
 
-            Object result = getDisplayName.invoke(customStack);
+            Object result = apiGetDisplayName.invoke(customStack);
             if (result instanceof Component c) {
                 return c;
             } else if (result instanceof String s && !s.isEmpty()) {
@@ -211,17 +201,17 @@ public class ItemsAdderBackend implements DropBackend {
     @Nullable
     @SuppressWarnings("unchecked")
     public List<Component> getLore(String itemId) {
-        if (!isPresent() || itemId == null || getLore == null) {
+        if (!isPresent() || itemId == null || apiGetLore == null) {
             return null;
         }
 
         try {
-            Object customStack = getInstance.invoke(null, itemId);
+            Object customStack = apiGetInstance.invoke(null, itemId);
             if (customStack == null) {
                 return null;
             }
 
-            Object result = getLore.invoke(customStack);
+            Object result = apiGetLore.invoke(customStack);
             if (result instanceof List<?> list && !list.isEmpty()) {
                 Object first = list.get(0);
                 if (first instanceof Component) {

@@ -4,6 +4,7 @@ import dev.oakheart.oakmobdrops.backend.ItemsAdderBackend;
 import dev.oakheart.oakmobdrops.backend.NexoBackend;
 import dev.oakheart.oakmobdrops.model.DropEntry;
 import dev.oakheart.oakmobdrops.model.DropType;
+import dev.oakheart.oakmobdrops.util.FormatUtils;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.JoinConfiguration;
 import net.kyori.adventure.text.event.HoverEvent;
@@ -17,16 +18,14 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Manages drop announcements with async broadcasting to prevent lag.
+ * Manages drop announcements.
  * Caches plugin item names and lore for better performance.
  */
 public class AnnouncementManager {
@@ -41,10 +40,6 @@ public class AnnouncementManager {
     private final Map<String, List<Component>> nexoLoreCache = new ConcurrentHashMap<>();
     private final Map<String, Component> iaNameCache = new ConcurrentHashMap<>();
     private final Map<String, List<Component>> iaLoreCache = new ConcurrentHashMap<>();
-
-    // Formatters
-    private static final DecimalFormat PCT = new DecimalFormat("0.####");
-    private static final DecimalFormat INT_GROUP = new DecimalFormat("#,###");
 
     // Backend references for name/lore resolution
     private final NexoBackend nexoBackend;
@@ -76,7 +71,6 @@ public class AnnouncementManager {
 
     /**
      * Send a drop announcement for a successful drop.
-     * Broadcasts asynchronously to prevent lag on large servers.
      *
      * @param drop the drop entry
      * @param entityType the type of mob killed
@@ -88,35 +82,36 @@ public class AnnouncementManager {
     public void sendAnnouncement(DropEntry drop, EntityType entityType,
                                  double effectiveChance, Player player,
                                  int amount, ItemStack item) {
+        // Play sound if configured (regardless of announcement)
+        if (drop.playSound() && playSound && dropSound != null) {
+            player.playSound(player.getLocation(), dropSound, 1.0f, 1.0f);
+        }
+
         // Check if announcement is needed
-        if (drop.getAnnouncement() == null || drop.getAnnouncement().isEmpty()) {
-            // Still play sound if needed
-            if (drop.isPlaySound() && playSound) {
-                player.playSound(player.getLocation(), dropSound, 1.0f, 1.0f);
-            }
+        if (drop.announcement() == null || drop.announcement().isEmpty()) {
             return;
         }
 
-        String announcementText = drop.getAnnouncement().equalsIgnoreCase("global")
+        String announcementText = drop.announcement().equalsIgnoreCase("global")
                 ? globalAnnouncement
-                : drop.getAnnouncement();
+                : drop.announcement();
 
         if (announcementText == null || announcementText.isEmpty()) {
             return;
         }
 
-        // Build announcement on main thread (has access to entity data)
-        String mobName = formatEntityName(entityType);
+        // Build announcement (already on main thread from EntityDeathEvent)
+        String mobName = FormatUtils.formatEntityName(entityType);
         Component itemNameComponent = getItemName(item, drop)
                 .hoverEvent(HoverEvent.showText(buildItemTooltip(item, drop)));
 
-        // Replace simple text placeholders using %% format (same as commands)
+        // Replace simple text placeholders
         String processedAnnouncement = announcementText
                 .replace("%player%", player.getName())
                 .replace("%mob%", mobName)
                 .replace("%amount%", String.valueOf(amount))
-                .replace("%chance%", formatPercent(effectiveChance))
-                .replace("%chance-fraction%", formatChanceFraction(effectiveChance))
+                .replace("%chance%", FormatUtils.formatChancePercent(effectiveChance))
+                .replace("%chance-fraction%", FormatUtils.formatChanceFraction(effectiveChance))
                 // Convert %item% to MiniMessage tag format to preserve hover tooltip
                 .replace("%item%", "<item>");
 
@@ -126,23 +121,14 @@ public class AnnouncementManager {
                 Placeholder.component("item", itemNameComponent)
         );
 
-        // Broadcast asynchronously to prevent lag
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                // Send message back on main thread (required by API)
-                Bukkit.getScheduler().runTask(plugin, () ->
-                    onlinePlayer.sendMessage(announcement));
-            }
-
-            // Log to console
-            String plainText = PlainTextComponentSerializer.plainText().serialize(announcement);
-            plugin.getLogger().info(plainText);
-        });
-
-        // Play sound (main thread)
-        if (drop.isPlaySound() && playSound) {
-            player.playSound(player.getLocation(), dropSound, 1.0f, 1.0f);
+        // Broadcast to all online players (sendMessage is fast — just queues a packet)
+        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+            onlinePlayer.sendMessage(announcement);
         }
+
+        // Log to console
+        String plainText = PlainTextComponentSerializer.plainText().serialize(announcement);
+        plugin.getLogger().info(plainText);
     }
 
     /**
@@ -159,12 +145,12 @@ public class AnnouncementManager {
         }
 
         // Try plugin-specific resolvers
-        if (drop != null && drop.getSpec() != null && drop.getSpec().getId() != null) {
-            if (drop.getSpec().getType() == DropType.NEXO) {
-                Component c = resolveNexoDisplayName(drop.getSpec().getId());
+        if (drop != null && drop.spec() != null && drop.spec().id() != null) {
+            if (drop.spec().type() == DropType.NEXO) {
+                Component c = resolveNexoDisplayName(drop.spec().id());
                 if (c != null) return c;
-            } else if (drop.getSpec().getType() == DropType.ITEMSADDER) {
-                Component c = resolveItemsAdderDisplayName(drop.getSpec().getId());
+            } else if (drop.spec().type() == DropType.ITEMSADDER) {
+                Component c = resolveItemsAdderDisplayName(drop.spec().id());
                 if (c != null) return c;
             }
         }
@@ -175,12 +161,12 @@ public class AnnouncementManager {
         } catch (Throwable ignored) {}
 
         // Fallback to formatted enum name or ID
-        if (drop != null && drop.getSpec() != null) {
-            if (drop.getSpec().getMaterial() != null) {
-                return Component.text(formatEnumName(drop.getSpec().getMaterial().name()));
+        if (drop != null && drop.spec() != null) {
+            if (drop.spec().material() != null) {
+                return Component.text(FormatUtils.formatEnumName(drop.spec().material().name()));
             }
-            if (drop.getSpec().getId() != null && !drop.getSpec().getId().isEmpty()) {
-                return Component.text(drop.getSpec().getId());
+            if (drop.spec().id() != null && !drop.spec().id().isEmpty()) {
+                return Component.text(drop.spec().id());
             }
         }
 
@@ -198,12 +184,12 @@ public class AnnouncementManager {
         Component title = null;
         if (meta != null && meta.hasDisplayName() && meta.displayName() != null) {
             title = meta.displayName();
-        } else if (drop != null && drop.getSpec() != null && drop.getSpec().getId() != null) {
+        } else if (drop != null && drop.spec() != null && drop.spec().id() != null) {
             // Plugin-aware fallbacks
-            if (drop.getSpec().getType() == DropType.NEXO) {
-                title = resolveNexoDisplayName(drop.getSpec().getId());
-            } else if (drop.getSpec().getType() == DropType.ITEMSADDER) {
-                title = resolveItemsAdderDisplayName(drop.getSpec().getId());
+            if (drop.spec().type() == DropType.NEXO) {
+                title = resolveNexoDisplayName(drop.spec().id());
+            } else if (drop.spec().type() == DropType.ITEMSADDER) {
+                title = resolveItemsAdderDisplayName(drop.spec().id());
             }
         }
 
@@ -211,7 +197,7 @@ public class AnnouncementManager {
             try {
                 title = Component.translatable(item.getType());
             } catch (Throwable ignored) {
-                title = Component.text(formatEnumName(item.getType().name()));
+                title = Component.text(FormatUtils.formatEnumName(item.getType().name()));
             }
         }
         lines.add(title);
@@ -222,11 +208,11 @@ public class AnnouncementManager {
 
         if (metaLore != null && !metaLore.isEmpty()) {
             lore = metaLore;
-        } else if (drop != null && drop.getSpec() != null && drop.getSpec().getId() != null) {
-            if (drop.getSpec().getType() == DropType.NEXO) {
-                lore = resolveNexoLore(drop.getSpec().getId());
-            } else if (drop.getSpec().getType() == DropType.ITEMSADDER) {
-                lore = resolveItemsAdderLore(drop.getSpec().getId());
+        } else if (drop != null && drop.spec() != null && drop.spec().id() != null) {
+            if (drop.spec().type() == DropType.NEXO) {
+                lore = resolveNexoLore(drop.spec().id());
+            } else if (drop.spec().type() == DropType.ITEMSADDER) {
+                lore = resolveItemsAdderLore(drop.spec().id());
             }
         }
 
@@ -263,32 +249,5 @@ public class AnnouncementManager {
             List<Component> l = itemsAdderBackend.getLore(k);
             return (l == null) ? Collections.emptyList() : l;
         });
-    }
-
-    // Formatting utilities
-    private String formatEntityName(EntityType type) {
-        return formatEnumName(type.name());
-    }
-
-    private String formatEnumName(String enumName) {
-        String[] words = enumName.toLowerCase(Locale.ROOT).split("_");
-        StringBuilder sb = new StringBuilder();
-        for (String w : words) {
-            if (!sb.isEmpty()) sb.append(' ');
-            sb.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
-        }
-        return sb.toString();
-    }
-
-    private String formatPercent(double probability0to1) {
-        return PCT.format(probability0to1 * 100.0);
-    }
-
-    private String formatChanceFraction(double p) {
-        if (!(p > 0.0)) return "Never";
-        if (p >= 1.0) return "Always";
-
-        long denominator = (long) Math.ceil(1.0 / p);
-        return "1/" + INT_GROUP.format(denominator);
     }
 }

@@ -58,20 +58,20 @@ public class VanillaBackend implements DropBackend {
      * @return the constructed ItemStack
      */
     private ItemStack buildItem(DropSpec spec) {
-        Material material = (spec.getMaterial() != null) ? spec.getMaterial() : Material.STONE;
-        ItemStack item = new ItemStack(material, Math.max(1, spec.getAmount()));
+        Material material = (spec.material() != null) ? spec.material() : Material.STONE;
+        ItemStack item = new ItemStack(material, Math.max(1, spec.amount()));
 
         var meta = item.getItemMeta();
         if (meta != null) {
             // Apply custom name if provided
-            if (spec.getName() != null && !spec.getName().isEmpty()) {
-                meta.displayName(MiniMessage.miniMessage().deserialize(spec.getName()));
+            if (spec.name() != null && !spec.name().isEmpty()) {
+                meta.displayName(MiniMessage.miniMessage().deserialize(spec.name()));
             }
 
             // Apply custom lore if provided
-            if (spec.getLore() != null && !spec.getLore().isEmpty()) {
+            if (!spec.lore().isEmpty()) {
                 List<Component> loreComponents = new ArrayList<>();
-                for (String line : spec.getLore()) {
+                for (String line : spec.lore()) {
                     loreComponents.add(MiniMessage.miniMessage().deserialize(line));
                 }
                 meta.lore(loreComponents);

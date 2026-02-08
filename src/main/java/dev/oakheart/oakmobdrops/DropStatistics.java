@@ -17,6 +17,9 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import dev.oakheart.oakmobdrops.model.PagedReport;
+import dev.oakheart.oakmobdrops.util.FormatUtils;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -24,10 +27,10 @@ public class DropStatistics {
     private final Map<String, MobStats> mobStats = new ConcurrentHashMap<>();
     private final Map<String, ItemDropStats> dropStats = new ConcurrentHashMap<>();
     private final Map<UUID, PlayerStats> playerStats = new ConcurrentHashMap<>();
-    private volatile long totalKills = 0;
-    private volatile long totalEligibleKills = 0;
-    private volatile long totalDrops = 0;
-    private volatile LocalDateTime trackingStarted = LocalDateTime.now();
+    private long totalKills = 0;
+    private long totalEligibleKills = 0;
+    private long totalDrops = 0;
+    private LocalDateTime trackingStarted = LocalDateTime.now();
 
     private final JavaPlugin plugin;
     private final Object mu = new Object();  // Mutex for thread safety
@@ -368,32 +371,25 @@ public class DropStatistics {
      * @param type the type of report to generate
      * @param limit number of entries per page
      * @param page page number (1-based)
-     * @return list of formatted message strings
+     * @return paged report with lines and pagination metadata
      */
-    public List<String> generateReport(ReportType type, int limit, int page) {
+    public PagedReport generateReport(ReportType type, int limit, int page) {
         List<String> report = new ArrayList<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-        // Snapshot data for thread safety
-        Map<String, MobStats> mobSnapshot;
-        Map<String, ItemDropStats> dropSnapshot;
-        Map<UUID, PlayerStats> playerSnapshot;
-        long totalKills, totalEligible, totalDrops;
-        LocalDateTime started;
-
-        synchronized (mu) {
-            mobSnapshot = new HashMap<>(mobStats);
-            dropSnapshot = new HashMap<>(dropStats);
-            playerSnapshot = new HashMap<>(playerStats);
-            totalKills = this.totalKills;
-            totalEligible = this.totalEligibleKills;
-            totalDrops = this.totalDrops;
-            started = this.trackingStarted;
-        }
+        // Deep-copy snapshot for thread safety (prevents reading live mutable objects)
+        StatsSaveData snapshot = createSnapshot();
+        Map<String, MobStats> mobSnapshot = snapshot.mobStats;
+        Map<String, ItemDropStats> dropSnapshot = snapshot.dropStats;
+        Map<UUID, PlayerStats> playerSnapshot = snapshot.playerStats;
+        long totalKills = snapshot.totalKills;
+        long totalEligible = snapshot.totalEligibleKills;
+        long totalDrops = snapshot.totalDrops;
+        LocalDateTime started = snapshot.trackingStarted;
 
         // Calculate pagination
         int skip = (page - 1) * limit;
-        int totalPages;
+        int totalPages = 1;
 
         switch (type) {
             case OVERVIEW -> {
@@ -404,7 +400,7 @@ public class DropStatistics {
                 report.add("<gray>Total items dropped:</gray> <white>" + String.format("%,d", totalDrops) + "</white>");
 
                 double eligibleRate = totalEligible > 0 ? (totalDrops * 100.0 / totalEligible) : 0;
-                report.add("<gray>Drop rate (eligible):</gray> <white>" + formatPercent(eligibleRate) + "</white>");
+                report.add("<gray>Drop rate (eligible):</gray> <white>" + FormatUtils.formatStatPercent(eligibleRate) + "</white>");
                 report.add("<gray>Unique drops tracked:</gray> <white>" + dropSnapshot.size() + "</white>");
                 report.add("<gray>Players tracked:</gray> <white>" + playerSnapshot.size() + "</white>");
             }
@@ -431,18 +427,18 @@ public class DropStatistics {
                             double variance = expRate > 0 ? ((actRate - expRate) / expRate) * 100 : 0;
 
                             report.add("<yellow>" + d.dropId + "</yellow> <gray>from</gray> <red>" +
-                                    formatEntityName(d.mobType) + "</red>");
+                                    FormatUtils.formatEnumName(d.mobType) + "</red>");
                             report.add("  <gray>Attempts:</gray> <white>" + String.format("%,d", d.attempts) +
                                     "</white> <gray>| Successes:</gray> <white>" + d.timesDropped +
                                     "</white> <gray>(≈" + Math.round(d.expected) + " expected)</gray>");
-                            report.add("  <gray>Expected:</gray> <white>" + formatPercent(expRate * 100) +
-                                    "</white> <gray>| Actual:</gray> <white>" + formatPercent(actRate * 100) +
+                            report.add("  <gray>Expected:</gray> <white>" + FormatUtils.formatStatPercent(expRate * 100) +
+                                    "</white> <gray>| Actual:</gray> <white>" + FormatUtils.formatStatPercent(actRate * 100) +
                                     "</white>");
 
                             String varianceColor = variance >= 0 ? "green" : "red";
                             String varianceSign = variance >= 0 ? "+" : "";
                             report.add("  <gray>Variance:</gray> <" + varianceColor + ">" +
-                                    varianceSign + formatPercent(variance) + "</" + varianceColor + ">");
+                                    varianceSign + FormatUtils.formatStatPercent(variance) + "</" + varianceColor + ">");
                         });
             }
 
@@ -462,10 +458,10 @@ public class DropStatistics {
                             MobStats m = mobSnapshot.get(d.mobType);
                             long eligibleKillsForMob = (m != null) ? m.eligibleKills : 0;
                             double actual = (d.attempts > 0) ? (double) d.timesDropped / d.attempts : 0.0;
-                            report.add("<yellow>" + d.dropId + "</yellow> <gray>from</gray> <red>" + formatEntityName(d.mobType) + "</red>");
+                            report.add("<yellow>" + d.dropId + "</yellow> <gray>from</gray> <red>" + FormatUtils.formatEnumName(d.mobType) + "</red>");
                             report.add("  <gray>Successes:</gray> <white>" + d.timesDropped + "</white>"
                                     + " <gray>| Attempts:</gray> <white>" + String.format("%,d", d.attempts) + "</white>"
-                                    + " <gray>| Actual:</gray> <white>" + formatPercent(actual * 100) + "</white>");
+                                    + " <gray>| Actual:</gray> <white>" + FormatUtils.formatStatPercent(actual * 100) + "</white>");
                             if (eligibleKillsForMob  > 0) {
                                 report.add("  <gray>Eligible kills (mob):</gray> <white>" + String.format("%,d", eligibleKillsForMob ) + "</white>");
                             }
@@ -485,13 +481,13 @@ public class DropStatistics {
                         .limit(limit)
                         .forEach(p -> {
                             double ratio = (p.mobsKilled > 0) ? (p.dropsReceived * 100.0 / p.mobsKilled) : 0.0;
-                            report.add("<yellow>" + p.playerName + "</yellow>");
+                            report.add("<click:run_command:'/omd stats player " + p.playerName + "'><hover:show_text:'<gray>Click to view detailed stats</gray>'><yellow>" + p.playerName + "</yellow></hover></click>");
                             report.add("  <gray>Kills:</gray> <white>" + String.format("%,d", p.mobsKilled) + "</white>"
                                     + " <gray>| Drops:</gray> <white>" + String.format("%,d", p.dropsReceived) + "</white>"
-                                    + " <gray>| Ratio:</gray> <white>" + formatPercent(ratio) + "</white>");
+                                    + " <gray>| Ratio:</gray> <white>" + FormatUtils.formatStatPercent(ratio) + "</white>");
                             if (p.rarestDropName != null) {
                                 report.add("  <gray>Rarest:</gray> <aqua>" + p.rarestDropName + "</aqua>"
-                                        + " <gray>(</gray><white>" + formatPercent(p.rarestDropChance * 100) + "</white><gray>)</gray>");
+                                        + " <gray>(</gray><white>" + FormatUtils.formatStatPercent(p.rarestDropChance * 100) + "</white><gray>)</gray>");
                             }
                         });
             }
@@ -511,20 +507,20 @@ public class DropStatistics {
                             var s = e.getValue();
                             double dropRate = (s.eligibleKills > 0) ? (s.totalDropped * 100.0 / s.eligibleKills) : 0.0;
                             double spawnerPct = (s.totalKilled > 0) ? (s.spawnerKills * 100.0 / s.totalKilled) : 0.0;
-                            report.add("<yellow>" + formatEntityName(e.getKey()) + "</yellow>");
+                            report.add("<yellow>" + FormatUtils.formatEnumName(e.getKey()) + "</yellow>");
                             report.add("  <gray>Killed:</gray> <white>" + String.format("%,d", s.totalKilled) + "</white>"
                                     + " <gray>| Eligible:</gray> <white>" + String.format("%,d", s.eligibleKills) + "</white>"
                                     + " <gray>| Dropped:</gray> <white>" + String.format("%,d", s.totalDropped) + "</white>"
-                                    + " <gray>(</gray><white>" + formatPercent(dropRate) + "</white><gray>)</gray>");
+                                    + " <gray>(</gray><white>" + FormatUtils.formatStatPercent(dropRate) + "</white><gray>)</gray>");
                             if (s.spawnerKills > 0) {
                                 report.add("  <gray>Spawner kills:</gray> <white>" + String.format("%,d", s.spawnerKills) + "</white>"
-                                        + " <gray>(</gray><white>" + formatPercent(spawnerPct) + "</white><gray>)</gray>");
+                                        + " <gray>(</gray><white>" + FormatUtils.formatStatPercent(spawnerPct) + "</white><gray>)</gray>");
                             }
                         });
             }
         }
 
-        return report;
+        return new PagedReport(report, page, totalPages, type);
     }
 
     /**
@@ -536,21 +532,17 @@ public class DropStatistics {
         List<String> report = new ArrayList<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-        // Snapshot data for thread safety
-        Map<String, MobStats> mobSnapshot;
-        Map<String, ItemDropStats> dropSnapshot;
+        // Deep-copy snapshot for thread safety (prevents reading live mutable objects)
+        StatsSaveData snapshot = createSnapshot();
+        Map<String, MobStats> mobSnapshot = snapshot.mobStats;
+        Map<String, ItemDropStats> dropSnapshot = snapshot.dropStats;
+
+        // Find player by name (case-insensitive)
         PlayerStats player = null;
-
-        synchronized (mu) {
-            mobSnapshot = new HashMap<>(mobStats);
-            dropSnapshot = new HashMap<>(dropStats);
-
-            // Find player by name (case-insensitive)
-            for (PlayerStats ps : playerStats.values()) {
-                if (ps.playerName.equalsIgnoreCase(playerName)) {
-                    player = ps;
-                    break;
-                }
+        for (PlayerStats ps : snapshot.playerStats.values()) {
+            if (ps.playerName.equalsIgnoreCase(playerName)) {
+                player = ps;
+                break;
             }
         }
 
@@ -575,7 +567,7 @@ public class DropStatistics {
                     .max(Map.Entry.comparingByValue())
                     .orElse(null);
             if (favorite != null) {
-                favoriteMob = formatEntityName(favorite.getKey());
+                favoriteMob = FormatUtils.formatEnumName(favorite.getKey());
                 favoriteMobKills = favorite.getValue();
             }
         }
@@ -600,23 +592,23 @@ public class DropStatistics {
         if (player.eligibleKills > 0) {
             double eligiblePct = (player.mobsKilled > 0) ? (player.eligibleKills * 100.0 / player.mobsKilled) : 0.0;
             report.add("<gray>Eligible kills:</gray> <white>" + String.format("%,d", player.eligibleKills) +
-                    "</white> <gray>(</gray><white>" + formatPercent(eligiblePct) + "</white><gray>)</gray>");
+                    "</white> <gray>(</gray><white>" + FormatUtils.formatStatPercent(eligiblePct) + "</white><gray>)</gray>");
         }
 
         if (player.spawnerKills > 0) {
             double spawnerPct = (player.mobsKilled > 0) ? (player.spawnerKills * 100.0 / player.mobsKilled) : 0.0;
             report.add("<gray>Spawner kills:</gray> <white>" + String.format("%,d", player.spawnerKills) +
-                    "</white> <gray>(</gray><white>" + formatPercent(spawnerPct) + "</white><gray>)</gray>");
+                    "</white> <gray>(</gray><white>" + FormatUtils.formatStatPercent(spawnerPct) + "</white><gray>)</gray>");
         }
 
         report.add("<gray>Total drops received:</gray> <white>" + String.format("%,d", player.dropsReceived) + "</white>");
 
         double ratio = (player.mobsKilled > 0) ? (player.dropsReceived * 100.0 / player.mobsKilled) : 0.0;
-        report.add("<gray>Drop ratio:</gray> <white>" + formatPercent(ratio) + "</white>");
+        report.add("<gray>Drop ratio:</gray> <white>" + FormatUtils.formatStatPercent(ratio) + "</white>");
 
         if (player.rarestDropName != null) {
             report.add("<gray>Rarest drop:</gray> <aqua>" + player.rarestDropName + "</aqua> " +
-                    "<gray>(</gray><white>" + formatPercent(player.rarestDropChance * 100) + "</white><gray>)</gray>");
+                    "<gray>(</gray><white>" + FormatUtils.formatStatPercent(player.rarestDropChance * 100) + "</white><gray>)</gray>");
         }
 
         // Show favorites
@@ -648,7 +640,7 @@ public class DropStatistics {
 
                         // Compact format: Zombie: 543 (500 eligible, 100 spawner)
                         StringBuilder line = new StringBuilder();
-                        line.append("  <gray>•</gray> <red>").append(formatEntityName(mobType)).append(":</red> ");
+                        line.append("  <gray>•</gray> <red>").append(FormatUtils.formatEnumName(mobType)).append(":</red> ");
                         line.append("<white>").append(String.format("%,d", totalKills)).append("</white>");
 
                         // Show details if available
@@ -683,13 +675,13 @@ public class DropStatistics {
                     .forEach(e -> {
                         // Parse mob:dropId format
                         String[] parts = e.getKey().split(":", 2);
-                        String mobType = parts.length > 0 ? formatEntityName(parts[0]) : "Unknown";
+                        String mobType = parts.length > 0 ? FormatUtils.formatEnumName(parts[0]) : "Unknown";
                         String dropId = parts.length > 1 ? parts[1] : e.getKey();
 
                         double pct = (totalDropsReceived > 0) ? (e.getValue() * 100.0 / totalDropsReceived) : 0.0;
                         report.add("  <gray>•</gray> <aqua>" + dropId + "</aqua> <gray>from</gray> <red>" + mobType + ":</red> " +
                                 "<white>" + String.format("%,d", e.getValue()) + "</white> " +
-                                "<gray>(</gray><white>" + formatPercent(pct) + "</white><gray>)</gray>");
+                                "<gray>(</gray><white>" + FormatUtils.formatStatPercent(pct) + "</white><gray>)</gray>");
                     });
 
             if (totalUniqueDrops > 15) {
@@ -747,6 +739,41 @@ public class DropStatistics {
         synchronized (mu) {
             this.maxPlayerStats = maxPlayerStats;
             enforcePlayerStatsLimit();
+        }
+    }
+
+    // ===== Thread-safe counter getters (for PlaceholderAPI) =====
+
+    public long getTotalKills() {
+        synchronized (mu) { return totalKills; }
+    }
+
+    public long getTotalDrops() {
+        synchronized (mu) { return totalDrops; }
+    }
+
+    public long getTotalEligibleKills() {
+        synchronized (mu) { return totalEligibleKills; }
+    }
+
+    public long getPlayerKills(UUID playerId) {
+        synchronized (mu) {
+            PlayerStats p = playerStats.get(playerId);
+            return p != null ? p.mobsKilled : 0;
+        }
+    }
+
+    public long getPlayerDrops(UUID playerId) {
+        synchronized (mu) {
+            PlayerStats p = playerStats.get(playerId);
+            return p != null ? p.dropsReceived : 0;
+        }
+    }
+
+    public long getPlayerEligibleKills(UUID playerId) {
+        synchronized (mu) {
+            PlayerStats p = playerStats.get(playerId);
+            return p != null ? p.eligibleKills : 0;
         }
     }
 
@@ -827,28 +854,33 @@ public class DropStatistics {
         MOB_BREAKDOWN
     }
 
-    private String formatEntityName(String enumName) {
-        String[] words = enumName.toLowerCase().split("_");
-        StringBuilder sb = new StringBuilder();
-        for (String w : words) {
-            if (sb.length() > 0) sb.append(' ');
-            sb.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
-        }
-        return sb.toString();
-    }
 
     /**
-     * Format a percentage value, removing trailing zeros.
-     * Examples: 10.0000 -> "10%", 10.5000 -> "10.5%", 10.0005 -> "10.0005%"
+     * Create a backup of the statistics file before resetting.
+     * @return the backup file name, or null if backup failed or no file exists
      */
-    private String formatPercent(double value) {
-        // Format with enough precision to capture detail
-        String formatted = String.format("%.4f", value);
-        // Remove trailing zeros after decimal point
-        formatted = formatted.replaceAll("(\\.\\d*?)0+$", "$1");
-        // Remove decimal point if no decimals remain
-        formatted = formatted.replaceAll("\\.$", "");
-        return formatted + "%";
+    public String backupBeforeReset() {
+        File statsFile = new File(plugin.getDataFolder(), "statistics.json");
+        if (!statsFile.exists()) {
+            return null;
+        }
+
+        // Save current data first
+        save();
+
+        String timestamp = LocalDateTime.now().format(
+                DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
+        String backupName = "statistics-backup-" + timestamp + ".json";
+        Path backupPath = new File(plugin.getDataFolder(), backupName).toPath();
+
+        try {
+            Files.copy(statsFile.toPath(), backupPath, StandardCopyOption.REPLACE_EXISTING);
+            plugin.getLogger().info("Statistics backed up to: " + backupName);
+            return backupName;
+        } catch (IOException e) {
+            plugin.getLogger().warning("Failed to backup statistics: " + e.getMessage());
+            return null;
+        }
     }
 
     /**

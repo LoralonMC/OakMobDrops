@@ -54,7 +54,7 @@ public class DropConfigLoader {
 
                 MobDropConfig config = parseMobConfig(entityType, mobSection, globalAllowSpawnerDrops);
 
-                if (config.getDrops().isEmpty()) {
+                if (config.drops().isEmpty()) {
                     plugin.getLogger().warning("No valid drops configured for " + entityType + "; skipping.");
                     continue;
                 }
@@ -63,10 +63,10 @@ public class DropConfigLoader {
 
                 if (debugMode) {
                     plugin.getLogger().info("Loaded " + entityType.name() + " with " +
-                            config.getDrops().size() + " drops:");
-                    for (DropEntry drop : config.getDrops()) {
-                        plugin.getLogger().info("  - " + drop.getId() + ": " +
-                                (drop.getChance() * 100) + "% chance");
+                            config.drops().size() + " drops:");
+                    for (DropEntry drop : config.drops()) {
+                        plugin.getLogger().info("  - " + drop.id() + ": " +
+                                (drop.chance() * 100) + "% chance");
                     }
                 }
 
@@ -231,44 +231,42 @@ public class DropConfigLoader {
      * Parse a DropSpec from a configuration section.
      */
     private DropSpec parseDropSpec(ConfigurationSection drop, EntityType type) {
-        DropSpec spec = new DropSpec();
-
         String typeStr = drop.getString("type", "VANILLA").toUpperCase(Locale.ROOT);
+        DropType dropType;
         try {
-            spec.setType(DropType.valueOf(typeStr));
+            dropType = DropType.valueOf(typeStr);
         } catch (IllegalArgumentException ex) {
-            spec.setType(DropType.VANILLA);
+            dropType = DropType.VANILLA;
         }
 
-        // Support both "id" and "item-id" for flexibility
-        spec.setId(optTrim(drop.getString("item-id", drop.getString("id", null))));
+        String id = optTrim(drop.getString("item-id", drop.getString("id", null)));
 
+        Material material = null;
         String mat = optTrim(drop.getString("material", null));
         if (mat != null) {
             try {
-                spec.setMaterial(Material.valueOf(mat.toUpperCase(Locale.ROOT)));
+                material = Material.valueOf(mat.toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException ignored) {
                 plugin.getLogger().warning("Invalid material '" + mat + "' for " + type + "; ignoring.");
             }
         }
 
-        spec.setName(drop.getString("name", null));
-        spec.setLore(drop.getStringList("lore"));
+        String name = drop.getString("name", null);
+        List<String> lore = drop.getStringList("lore");
 
-        return spec;
+        return new DropSpec(dropType, id, 1, material, name, lore);
     }
 
     /**
      * Parse a DropSpec from a map.
      */
     private DropSpec parseDropSpecFromMap(Map<?, ?> map, EntityType type) {
-        DropSpec spec = new DropSpec();
-
         String typeStr = asString(map.get("type"), "VANILLA").toUpperCase(Locale.ROOT);
+        DropType dropType;
         try {
-            spec.setType(DropType.valueOf(typeStr));
+            dropType = DropType.valueOf(typeStr);
         } catch (IllegalArgumentException e) {
-            spec.setType(DropType.VANILLA);
+            dropType = DropType.VANILLA;
         }
 
         // Item id key flexibility
@@ -276,24 +274,21 @@ public class DropConfigLoader {
         if (itemId == null) {
             itemId = asNullableString(map.get("itemId"));
         }
-        spec.setId(itemId);
 
+        Material material = null;
         String mat = asNullableString(map.get("material"));
         if (mat != null) {
             try {
-                spec.setMaterial(Material.valueOf(mat.toUpperCase(Locale.ROOT)));
+                material = Material.valueOf(mat.toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException ignored) {
                 plugin.getLogger().warning("Invalid material '" + mat + "' for " + type + "; ignoring.");
             }
         }
 
-        spec.setName(asNullableString(map.get("name")));
+        String name = asNullableString(map.get("name"));
         List<String> lore = asStringList(map.get("lore"));
-        if (lore != null) {
-            spec.setLore(lore);
-        }
 
-        return spec;
+        return new DropSpec(dropType, itemId, 1, material, name, lore);
     }
 
     /**
@@ -332,7 +327,7 @@ public class DropConfigLoader {
             }
             return out;
         }
-        return null;
+        return Collections.emptyList();
     }
 
     private static String optTrim(String s) {

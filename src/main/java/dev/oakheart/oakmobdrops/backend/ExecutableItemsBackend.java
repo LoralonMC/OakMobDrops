@@ -7,7 +7,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.Optional;
@@ -20,14 +19,14 @@ public class ExecutableItemsBackend implements DropBackend {
     private final JavaPlugin plugin;
     private final boolean debugMode;
 
-    // Cached reflection methods
-    private static volatile Method getExecutableItemsManager;
-    private static volatile Method getExecutableItem;
-    private static volatile Method isPresent;
-    private static volatile Method get;
-    private static volatile Method buildItem;
-    private static volatile boolean reflectionInitialized = false;
-    private static volatile boolean reflectionFailed = false;
+    // Cached reflection methods (instance-level to avoid stale state across reloads)
+    private volatile Method getExecutableItemsManager;
+    private volatile Method getExecutableItem;
+    private volatile Method optionalIsPresent;
+    private volatile Method optionalGet;
+    private volatile Method buildItem;
+    private volatile boolean reflectionInitialized = false;
+    private volatile boolean reflectionFailed = false;
 
     public ExecutableItemsBackend(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -36,37 +35,27 @@ public class ExecutableItemsBackend implements DropBackend {
     }
 
     /**
-     * Initialize reflection methods once.
-     * Thread-safe lazy initialization.
+     * Initialize reflection methods.
+     * Called from constructor — safe publication is guaranteed by final field in DropRouter.
      */
     private void initializeReflection() {
-        if (reflectionInitialized || reflectionFailed) {
-            return;
-        }
+        try {
+            Class<?> apiClass = Class.forName("com.ssomar.score.api.executableitems.ExecutableItemsAPI");
+            getExecutableItemsManager = apiClass.getMethod("getExecutableItemsManager");
 
-        synchronized (ExecutableItemsBackend.class) {
-            if (reflectionInitialized || reflectionFailed) {
-                return;
-            }
+            Object manager = getExecutableItemsManager.invoke(null);
+            getExecutableItem = manager.getClass().getMethod("getExecutableItem", String.class);
 
-            try {
-                Class<?> apiClass = Class.forName("com.ssomar.score.api.executableitems.ExecutableItemsAPI");
-                getExecutableItemsManager = apiClass.getMethod("getExecutableItemsManager");
+            // Optional methods
+            optionalIsPresent = Optional.class.getMethod("isPresent");
+            optionalGet = Optional.class.getMethod("get");
 
-                Object manager = getExecutableItemsManager.invoke(null);
-                getExecutableItem = manager.getClass().getMethod("getExecutableItem", String.class);
-
-                // Optional methods
-                isPresent = Optional.class.getMethod("isPresent");
-                get = Optional.class.getMethod("get");
-
-                reflectionInitialized = true;
-                plugin.getLogger().info("[ExecutableItems] Detected API successfully");
-            } catch (Exception e) {
-                reflectionFailed = true;
-                if (debugMode) {
-                    plugin.getLogger().fine("[ExecutableItems Backend] Reflection initialization failed: " + e.getMessage());
-                }
+            reflectionInitialized = true;
+            plugin.getLogger().info("[ExecutableItems] Detected API successfully");
+        } catch (Exception e) {
+            reflectionFailed = true;
+            if (debugMode) {
+                plugin.getLogger().fine("[ExecutableItems Backend] Reflection initialization failed: " + e.getMessage());
             }
         }
     }
@@ -121,27 +110,27 @@ public class ExecutableItemsBackend implements DropBackend {
      */
     @Nullable
     private ItemStack buildItemStack(DropSpec spec, @Nullable Player creator) {
-        if (!isPresent() || spec.getId() == null) {
+        if (!isPresent() || spec.id() == null) {
             return null;
         }
 
         try {
             Object manager = getExecutableItemsManager.invoke(null);
-            Object optional = getExecutableItem.invoke(manager, spec.getId());
+            Object optional = getExecutableItem.invoke(manager, spec.id());
 
             if (optional == null) {
                 return null;
             }
 
-            boolean present = (boolean) isPresent.invoke(optional);
+            boolean present = (boolean) optionalIsPresent.invoke(optional);
             if (!present) {
                 if (debugMode) {
-                    plugin.getLogger().fine("[ExecutableItems] Item not found: " + spec.getId());
+                    plugin.getLogger().fine("[ExecutableItems] Item not found: " + spec.id());
                 }
                 return null;
             }
 
-            Object executableItem = get.invoke(optional);
+            Object executableItem = optionalGet.invoke(optional);
 
             // Get or initialize buildItem method
             if (buildItem == null) {
@@ -149,14 +138,14 @@ public class ExecutableItemsBackend implements DropBackend {
                         Optional.class, Optional.class);
             }
 
-            Object result = buildItem.invoke(executableItem, Math.max(1, spec.getAmount()),
+            Object result = buildItem.invoke(executableItem, Math.max(1, spec.amount()),
                     Optional.empty(), Optional.ofNullable(creator));
 
             return (result instanceof ItemStack) ? (ItemStack) result : null;
 
-        } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+        } catch (Exception e) {
             if (debugMode) {
-                plugin.getLogger().warning("[ExecutableItems] Failed to build item '" + spec.getId() +
+                plugin.getLogger().warning("[ExecutableItems] Failed to build item '" + spec.id() +
                         "': " + e.getClass().getSimpleName() + " - " + e.getMessage());
             }
             return null;

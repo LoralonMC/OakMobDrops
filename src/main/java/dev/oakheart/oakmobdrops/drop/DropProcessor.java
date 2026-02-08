@@ -63,21 +63,21 @@ public class DropProcessor {
 
         // Record attempt for statistics
         if (statistics != null && enableStatistics) {
-            statistics.recordAttempt(entity.getType(), drop.getId(), finalChance);
+            statistics.recordAttempt(entity.getType(), drop.id(), finalChance);
         }
 
         // Roll for drop
         double roll = ThreadLocalRandom.current().nextDouble();
         if (roll > finalChance) {
             if (debugMode) {
-                plugin.getLogger().info("Drop '" + drop.getId() + "' failed: " +
+                plugin.getLogger().info("Drop '" + drop.id() + "' failed: " +
                         roll + " > " + finalChance);
             }
             return false;
         }
 
         if (debugMode) {
-            plugin.getLogger().info("Drop '" + drop.getId() + "' succeeded! " +
+            plugin.getLogger().info("Drop '" + drop.id() + "' succeeded! " +
                     roll + " <= " + finalChance);
         }
 
@@ -85,13 +85,13 @@ public class DropProcessor {
         int amount = calculateAmount(drop);
 
         // Build the item
-        DropSpec specWithAmount = drop.getSpec().withAmount(amount);
-        DropBackend backend = router.forType(specWithAmount.getType());
+        DropSpec specWithAmount = drop.spec().withAmount(amount);
+        DropBackend backend = router.forType(specWithAmount.type());
 
-        ItemStack built = backend.createItem(specWithAmount, drop.isDropAtLocation() ? null : recipient);
+        ItemStack built = backend.createItem(specWithAmount, drop.dropAtLocation() ? null : recipient);
         if (built == null) {
-            plugin.getLogger().warning("Drop build failed for '" + drop.getId() +
-                    "' using backend " + specWithAmount.getType());
+            plugin.getLogger().warning("Drop build failed for '" + drop.id() +
+                    "' using backend " + specWithAmount.type());
             return false;
         }
 
@@ -100,7 +100,7 @@ public class DropProcessor {
 
         // Record success for statistics
         if (statistics != null && enableStatistics) {
-            statistics.recordSuccess(entity.getType(), drop.getId(), amount, finalChance, recipient);
+            statistics.recordSuccess(entity.getType(), drop.id(), amount, finalChance, recipient);
         }
 
         // Send announcement
@@ -108,9 +108,9 @@ public class DropProcessor {
                 recipient, amount, built);
 
         // Execute commands if configured
-        if (!drop.getCommands().isEmpty()) {
+        if (!drop.commands().isEmpty()) {
             Component itemName = getItemDisplayName(built, drop);
-            commandExecutor.executeCommands(drop.getCommands(), recipient, entity.getType(),
+            commandExecutor.executeCommands(drop.commands(), recipient, entity.getType(),
                     itemName, amount, finalChance);
         }
 
@@ -138,7 +138,7 @@ public class DropProcessor {
      * Calculate the final drop chance including looting enchantment.
      */
     private double calculateFinalChance(DropEntry drop, Player killer) {
-        double finalChance = drop.getChance();
+        double finalChance = drop.chance();
 
         if (useLootingEnchant && killer != null) {
             ItemStack weapon = killer.getInventory().getItemInMainHand();
@@ -147,8 +147,8 @@ public class DropProcessor {
                 finalChance = finalChance * (1 + (lootingLevel * lootingMultiplier));
 
                 if (debugMode) {
-                    plugin.getLogger().info("Drop '" + drop.getId() + "': Looting " + lootingLevel +
-                            " applied. Chance: " + (drop.getChance() * 100) + "% -> " +
+                    plugin.getLogger().info("Drop '" + drop.id() + "': Looting " + lootingLevel +
+                            " applied. Chance: " + (drop.chance() * 100) + "% -> " +
                             (finalChance * 100) + "%");
                 }
             }
@@ -161,17 +161,17 @@ public class DropProcessor {
      * Calculate the amount to drop based on the configured range.
      */
     private int calculateAmount(DropEntry drop) {
-        if (drop.getMinAmount() == drop.getMaxAmount()) {
-            return drop.getMinAmount();
+        if (drop.minAmount() == drop.maxAmount()) {
+            return drop.minAmount();
         }
-        return ThreadLocalRandom.current().nextInt(drop.getMinAmount(), drop.getMaxAmount() + 1);
+        return ThreadLocalRandom.current().nextInt(drop.minAmount(), drop.maxAmount() + 1);
     }
 
     /**
      * Distribute the item either by dropping it or giving it to the player.
      */
     private void distributeItem(DropEntry drop, LivingEntity entity, Player recipient, ItemStack item) {
-        if (drop.isDropAtLocation()) {
+        if (drop.dropAtLocation()) {
             entity.getWorld().dropItemNaturally(entity.getLocation(), item);
         } else {
             Map<Integer, ItemStack> leftovers = recipient.getInventory().addItem(item);
