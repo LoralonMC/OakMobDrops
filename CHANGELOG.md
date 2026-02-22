@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-02-22
+
 ### Added
 
 - Add configurable statistics storage backend (`storage-type: json` or `sqlite` in config.yml)
@@ -149,6 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Persistent data containers for spawner tracking
 - ThreadLocalRandom for efficient random number generation
 
-[Unreleased]: https://github.com/LoralonMC/OakMobDrops/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/LoralonMC/OakMobDrops/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/LoralonMC/OakMobDrops/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/LoralonMC/OakMobDrops/releases/tag/v1.1.0
 [1.0.0]: https://github.com/LoralonMC/OakMobDrops/releases/tag/v1.0.0
