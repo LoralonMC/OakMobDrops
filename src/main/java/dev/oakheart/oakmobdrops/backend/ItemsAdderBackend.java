@@ -1,25 +1,18 @@
 package dev.oakheart.oakmobdrops.backend;
 
+import dev.oakheart.oakmobdrops.OakMobDrops;
 import dev.oakheart.oakmobdrops.model.DropSpec;
 import net.kyori.adventure.text.Component;
-import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
-/**
- * Backend for ItemsAdder plugin.
- * Uses reflection with method caching for better performance.
- */
 public class ItemsAdderBackend implements DropBackend {
-    private final JavaPlugin plugin;
-    private final boolean debugMode;
+    private final OakMobDrops plugin;
 
     // Cached reflection methods (instance-level to avoid stale state across reloads)
     private volatile Method apiGetInstance;
@@ -29,15 +22,14 @@ public class ItemsAdderBackend implements DropBackend {
     private volatile boolean reflectionInitialized = false;
     private volatile boolean reflectionFailed = false;
 
-    public ItemsAdderBackend(JavaPlugin plugin) {
+    public ItemsAdderBackend(OakMobDrops plugin) {
         this.plugin = plugin;
-        this.debugMode = plugin.getConfig().getBoolean("settings.debug", false);
         initializeReflection();
     }
 
     /**
      * Initialize reflection methods.
-     * Called from constructor — safe publication is guaranteed by final field in DropRouter.
+     * Called from constructor -- safe publication is guaranteed by final field in DropRouter.
      */
     private void initializeReflection() {
         try {
@@ -74,7 +66,7 @@ public class ItemsAdderBackend implements DropBackend {
                 displayNameMethod + "/" + loreMethod + ")");
         } catch (Exception e) {
             reflectionFailed = true;
-            if (debugMode) {
+            if (plugin.isDebugMode()) {
                 plugin.getLogger().fine("[ItemsAdder Backend] Reflection initialization failed: " + e.getMessage());
             }
         }
@@ -97,31 +89,6 @@ public class ItemsAdderBackend implements DropBackend {
         return buildItemStack(spec);
     }
 
-    @Override
-    public boolean give(Player player, DropSpec spec) {
-        ItemStack item = buildItemStack(spec);
-        if (item == null) {
-            return false;
-        }
-
-        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
-        if (!leftovers.isEmpty()) {
-            leftovers.values().forEach(stack ->
-                player.getWorld().dropItemNaturally(player.getLocation(), stack));
-        }
-        return true;
-    }
-
-    @Override
-    public boolean drop(Location location, DropSpec spec) {
-        ItemStack item = buildItemStack(spec);
-        if (item == null) {
-            return false;
-        }
-        location.getWorld().dropItemNaturally(location, item);
-        return true;
-    }
-
     /**
      * Build an ItemStack using ItemsAdder API.
      * @param spec the drop specification
@@ -136,7 +103,7 @@ public class ItemsAdderBackend implements DropBackend {
         try {
             Object customStack = apiGetInstance.invoke(null, spec.id());
             if (customStack == null) {
-                if (debugMode) {
+                if (plugin.isDebugMode()) {
                     plugin.getLogger().fine("[ItemsAdder] Item not found: " + spec.id());
                 }
                 return null;
@@ -152,7 +119,7 @@ public class ItemsAdderBackend implements DropBackend {
             return item;
 
         } catch (Exception e) {
-            if (debugMode) {
+            if (plugin.isDebugMode()) {
                 plugin.getLogger().warning("[ItemsAdder] Failed to build item '" + spec.id() +
                         "': " + e.getClass().getSimpleName() + " - " + e.getMessage());
             }
@@ -166,6 +133,7 @@ public class ItemsAdderBackend implements DropBackend {
      * @param itemId the item ID
      * @return the display name, or null if not found
      */
+    @Override
     @Nullable
     public Component getDisplayName(String itemId) {
         if (!isPresent() || itemId == null || apiGetDisplayName == null) {
@@ -185,7 +153,7 @@ public class ItemsAdderBackend implements DropBackend {
                 return Component.text(s);
             }
         } catch (Exception e) {
-            if (debugMode) {
+            if (plugin.isDebugMode()) {
                 plugin.getLogger().fine("[ItemsAdder] Failed to get display name: " + e.getMessage());
             }
         }
@@ -198,6 +166,7 @@ public class ItemsAdderBackend implements DropBackend {
      * @param itemId the item ID
      * @return the lore, or null if not found
      */
+    @Override
     @Nullable
     @SuppressWarnings("unchecked")
     public List<Component> getLore(String itemId) {
@@ -225,7 +194,7 @@ public class ItemsAdderBackend implements DropBackend {
                 }
             }
         } catch (Exception e) {
-            if (debugMode) {
+            if (plugin.isDebugMode()) {
                 plugin.getLogger().fine("[ItemsAdder] Failed to get lore: " + e.getMessage());
             }
         }

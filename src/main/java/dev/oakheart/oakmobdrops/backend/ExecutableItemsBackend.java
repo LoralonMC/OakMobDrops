@@ -1,23 +1,20 @@
 package dev.oakheart.oakmobdrops.backend;
 
+import dev.oakheart.oakmobdrops.OakMobDrops;
 import dev.oakheart.oakmobdrops.model.DropSpec;
-import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
+import net.kyori.adventure.text.Component;
+
 import java.lang.reflect.Method;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
-/**
- * Backend for ExecutableItems plugin.
- * Uses reflection with method caching for better performance.
- */
 public class ExecutableItemsBackend implements DropBackend {
-    private final JavaPlugin plugin;
-    private final boolean debugMode;
+    private final OakMobDrops plugin;
 
     // Cached reflection methods (instance-level to avoid stale state across reloads)
     private volatile Method getExecutableItemsManager;
@@ -25,18 +22,18 @@ public class ExecutableItemsBackend implements DropBackend {
     private volatile Method optionalIsPresent;
     private volatile Method optionalGet;
     private volatile Method buildItem;
+    private volatile Method apiGetName;
     private volatile boolean reflectionInitialized = false;
     private volatile boolean reflectionFailed = false;
 
-    public ExecutableItemsBackend(JavaPlugin plugin) {
+    public ExecutableItemsBackend(OakMobDrops plugin) {
         this.plugin = plugin;
-        this.debugMode = plugin.getConfig().getBoolean("settings.debug", false);
         initializeReflection();
     }
 
     /**
      * Initialize reflection methods.
-     * Called from constructor — safe publication is guaranteed by final field in DropRouter.
+     * Called from constructor -- safe publication is guaranteed by final field in DropRouter.
      */
     private void initializeReflection() {
         try {
@@ -54,7 +51,7 @@ public class ExecutableItemsBackend implements DropBackend {
             plugin.getLogger().info("[ExecutableItems] Detected API successfully");
         } catch (Exception e) {
             reflectionFailed = true;
-            if (debugMode) {
+            if (plugin.isDebugMode()) {
                 plugin.getLogger().fine("[ExecutableItems Backend] Reflection initialization failed: " + e.getMessage());
             }
         }
@@ -75,31 +72,6 @@ public class ExecutableItemsBackend implements DropBackend {
     @Nullable
     public ItemStack createItem(DropSpec spec, @Nullable Player creator) {
         return buildItemStack(spec, creator);
-    }
-
-    @Override
-    public boolean give(Player player, DropSpec spec) {
-        ItemStack item = buildItemStack(spec, player);
-        if (item == null) {
-            return false;
-        }
-
-        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
-        if (!leftovers.isEmpty()) {
-            leftovers.values().forEach(stack ->
-                player.getWorld().dropItemNaturally(player.getLocation(), stack));
-        }
-        return true;
-    }
-
-    @Override
-    public boolean drop(Location location, DropSpec spec) {
-        ItemStack item = buildItemStack(spec, null);
-        if (item == null) {
-            return false;
-        }
-        location.getWorld().dropItemNaturally(location, item);
-        return true;
     }
 
     /**
@@ -124,7 +96,7 @@ public class ExecutableItemsBackend implements DropBackend {
 
             boolean present = (boolean) optionalIsPresent.invoke(optional);
             if (!present) {
-                if (debugMode) {
+                if (plugin.isDebugMode()) {
                     plugin.getLogger().fine("[ExecutableItems] Item not found: " + spec.id());
                 }
                 return null;
@@ -144,11 +116,116 @@ public class ExecutableItemsBackend implements DropBackend {
             return (result instanceof ItemStack) ? (ItemStack) result : null;
 
         } catch (Exception e) {
-            if (debugMode) {
+            if (plugin.isDebugMode()) {
                 plugin.getLogger().warning("[ExecutableItems] Failed to build item '" + spec.id() +
                         "': " + e.getClass().getSimpleName() + " - " + e.getMessage());
             }
             return null;
         }
+    }
+
+    /**
+     * Resolve the ExecutableItem object for a given item ID.
+     * Shared by getDisplayName/getLore to avoid duplicating reflection logic.
+     */
+    @Nullable
+    private Object resolveExecutableItem(String itemId) {
+        if (!isPresent() || itemId == null) {
+            return null;
+        }
+        try {
+            Object manager = getExecutableItemsManager.invoke(null);
+            Object optional = getExecutableItem.invoke(manager, itemId);
+            if (optional == null) return null;
+            boolean present = (boolean) optionalIsPresent.invoke(optional);
+            if (!present) return null;
+            return optionalGet.invoke(optional);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Lazily discover and cache the name method on ExecutableItem objects.
+     */
+    private void discoverNameMethod(Object executableItem) {
+        if (apiGetName != null) return;
+        for (String methodName : new String[]{"getName", "getDisplayName", "getItemName"}) {
+            try {
+                apiGetName = executableItem.getClass().getMethod(methodName);
+                if (plugin.isDebugMode()) {
+                    plugin.getLogger().fine("[ExecutableItems] Discovered name method: " + methodName);
+                }
+                return;
+            } catch (NoSuchMethodException ignored) {}
+        }
+    }
+
+    /**
+     * Get display name for an ExecutableItems item.
+     * Tries the EI API name method first, then falls back to building the item.
+     */
+    @Override
+    @Nullable
+    public Component getDisplayName(String itemId) {
+        Object executableItem = resolveExecutableItem(itemId);
+        if (executableItem == null) return null;
+
+        // Try direct API name method
+        discoverNameMethod(executableItem);
+        if (apiGetName != null) {
+            try {
+                Object result = apiGetName.invoke(executableItem);
+                if (result instanceof Component c) {
+                    return c;
+                } else if (result instanceof String s && !s.isEmpty()) {
+                    return Component.text(s);
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Fallback: build item and check meta
+        try {
+            if (buildItem == null) {
+                buildItem = executableItem.getClass().getMethod("buildItem", int.class,
+                        Optional.class, Optional.class);
+            }
+            Object result = buildItem.invoke(executableItem, 1, Optional.empty(), Optional.empty());
+            if (result instanceof ItemStack item) {
+                var meta = item.getItemMeta();
+                if (meta != null) {
+                    if (meta.displayName() != null) return meta.displayName();
+                    if (meta.itemName() != null) return meta.itemName();
+                }
+            }
+        } catch (Exception ignored) {}
+
+        return null;
+    }
+
+    /**
+     * Get lore for an ExecutableItems item by building a preview item.
+     */
+    @Override
+    @Nullable
+    public List<Component> getLore(String itemId) {
+        Object executableItem = resolveExecutableItem(itemId);
+        if (executableItem == null) return null;
+
+        try {
+            if (buildItem == null) {
+                buildItem = executableItem.getClass().getMethod("buildItem", int.class,
+                        Optional.class, Optional.class);
+            }
+            Object result = buildItem.invoke(executableItem, 1, Optional.empty(), Optional.empty());
+            if (result instanceof ItemStack item) {
+                var meta = item.getItemMeta();
+                if (meta != null && meta.lore() != null && !meta.lore().isEmpty()) {
+                    return meta.lore();
+                }
+            }
+        } catch (Exception ignored) {}
+
+        return null;
     }
 }

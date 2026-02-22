@@ -8,10 +8,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.*;
 
-/**
- * Handles loading and parsing of drop configurations from config.yml.
- * Supports both list and section formats for drop entries.
- */
 public class DropConfigLoader {
     private final JavaPlugin plugin;
     private final boolean debugMode;
@@ -21,12 +17,6 @@ public class DropConfigLoader {
         this.debugMode = debugMode;
     }
 
-    /**
-     * Load all mob drop configurations from the config.
-     * @param mobsSection the "mobs" section from config.yml
-     * @param globalAllowSpawnerDrops the global spawner drops setting
-     * @return map of EntityType to MobDropConfig
-     */
     public Map<EntityType, MobDropConfig> loadMobConfigs(ConfigurationSection mobsSection,
                                                           boolean globalAllowSpawnerDrops) {
         Map<EntityType, MobDropConfig> configs = new HashMap<>();
@@ -37,13 +27,11 @@ public class DropConfigLoader {
         }
 
         for (String mobKey : mobsSection.getKeys(false)) {
+            ConfigurationSection mobSection = mobsSection.getConfigurationSection(mobKey);
+            if (mobSection == null) continue;
+
             try {
                 EntityType entityType = EntityType.valueOf(mobKey.toUpperCase(Locale.ROOT));
-                ConfigurationSection mobSection = mobsSection.getConfigurationSection(mobKey);
-
-                if (mobSection == null) {
-                    continue;
-                }
 
                 if (!mobSection.getBoolean("enabled", true)) {
                     if (debugMode) {
@@ -78,84 +66,80 @@ public class DropConfigLoader {
         return configs;
     }
 
-    /**
-     * Parse a single mob's configuration.
-     */
     private MobDropConfig parseMobConfig(EntityType entityType, ConfigurationSection mobSection,
                                          boolean globalAllowSpawnerDrops) {
         boolean requirePlayerKill = mobSection.getBoolean("require-player-kill", true);
         boolean allowSpawnerDrops = mobSection.getBoolean("allow-spawner-drops", globalAllowSpawnerDrops);
         List<DropEntry> drops = new ArrayList<>();
 
-        // Check for new multi-drop format first
-        if (mobSection.contains("drops")) {
-            if (mobSection.isList("drops")) {
-                // List format
-                List<Map<?, ?>> dropsList = mobSection.getMapList("drops");
-                for (int i = 0; i < dropsList.size(); i++) {
-                    Map<?, ?> dropMap = dropsList.get(i);
-                    DropEntry entry = parseDropFromMap(dropMap, entityType, "drop_" + i);
+        // Try list format first (YAML sequence: drops: [{...}, ...])
+        List<Map<?, ?>> mapList = mobSection.getMapList("drops");
+        if (!mapList.isEmpty()) {
+            for (int i = 0; i < mapList.size(); i++) {
+                Map<?, ?> dropMap = mapList.get(i);
+                DropEntry entry = parseDropFromMap(dropMap, entityType, "drop_" + i);
+                if (entry != null) {
                     drops.add(entry);
                 }
-            } else if (mobSection.isConfigurationSection("drops")) {
-                // Section format with named drops
-                ConfigurationSection dropsSection = mobSection.getConfigurationSection("drops");
-                if (dropsSection != null) {
-                    for (String dropId : dropsSection.getKeys(false)) {
-                        ConfigurationSection dropSection = dropsSection.getConfigurationSection(dropId);
-                        if (dropSection != null) {
-                            drops.add(parseDropEntry(dropSection, entityType, dropId));
+            }
+        } else {
+            // Try section format (YAML mapping: drops: { named_drop: {...} })
+            ConfigurationSection dropsSection = mobSection.getConfigurationSection("drops");
+            if (dropsSection != null) {
+                for (String dropId : dropsSection.getKeys(false)) {
+                    ConfigurationSection dropSection = dropsSection.getConfigurationSection(dropId);
+                    if (dropSection != null) {
+                        DropEntry entry = parseDropEntry(dropSection, entityType, dropId);
+                        if (entry != null) {
+                            drops.add(entry);
                         }
                     }
                 }
+            } else {
+                // Legacy single-drop format (drop: {...})
+                ConfigurationSection dropSection = mobSection.getConfigurationSection("drop");
+                if (dropSection != null) {
+                    DropEntry entry = parseLegacyDropEntry(mobSection, dropSection, entityType);
+                    if (entry != null) {
+                        drops.add(entry);
+                    }
+                } else {
+                    plugin.getLogger().warning("No 'drops' or 'drop' section for " + entityType + "; skipping.");
+                }
             }
-        } else if (mobSection.contains("drop")) {
-            // Legacy single-drop format for backward compatibility
-            ConfigurationSection dropSection = mobSection.getConfigurationSection("drop");
-            if (dropSection != null) {
-                DropEntry entry = parseLegacyDropEntry(mobSection, dropSection, entityType);
-                drops.add(entry);
-            }
-        } else {
-            plugin.getLogger().warning("No 'drops' or 'drop' section for " + entityType + "; skipping.");
         }
 
         return new MobDropConfig(entityType, requirePlayerKill, allowSpawnerDrops, drops);
     }
 
-    /**
-     * Parse a drop entry from a map (list format).
-     */
     private DropEntry parseDropFromMap(Map<?, ?> map, EntityType type, String defaultId) {
-        String id = asString(map.get("id"), defaultId);
-        double chance = validateChance(asDouble(map.get("chance"), 0.0001), type.name(), id);
+        String id = getMapString(map, "id", defaultId);
+        double chance = validateChance(getMapDouble(map, "chance", 0.0001), type.name(), id);
 
         int minAmount = 1, maxAmount = 1;
         Object amountObj = map.get("amount");
-        if (amountObj instanceof String s) {
-            int[] range = parseAmountRange(s);
+        if (amountObj instanceof String amountStr && amountStr.contains("-")) {
+            int[] range = parseAmountRange(amountStr);
             minAmount = range[0];
             maxAmount = range[1];
-        } else if (amountObj instanceof Number n) {
-            minAmount = maxAmount = Math.max(1, n.intValue());
+        } else {
+            int amountInt = getMapInt(map, "amount", 1);
+            minAmount = maxAmount = Math.max(1, amountInt);
         }
 
-        boolean dropAtLocation = asBoolean(map.get("drop-at-location"), true);
-        String announcement = asNullableString(map.get("announcement"));
-        boolean playSound = asBoolean(map.get("play-sound"), true);
+        boolean dropAtLocation = getMapBoolean(map, "drop-at-location", true);
+        String announcement = getNullableMapString(map, "announcement");
+        boolean playSound = getMapBoolean(map, "play-sound", true);
 
-        // Parse commands
-        List<String> commands = asStringList(map.get("commands"));
+        List<String> commands = getMapStringList(map, "commands");
 
         DropSpec spec = parseDropSpecFromMap(map, type);
+        if (spec == null) return null;
 
         return new DropEntry(id, chance, dropAtLocation, announcement, playSound,
                 minAmount, maxAmount, spec, commands);
     }
 
-    /**
-     * Parse a drop entry from a configuration section (section format).
-     */
     private DropEntry parseDropEntry(ConfigurationSection drop, EntityType type, String dropId) {
         double chance = validateChance(drop.getDouble("chance", 0.0001), type.name(), dropId);
 
@@ -170,43 +154,36 @@ public class DropConfigLoader {
         }
 
         boolean dropAtLocation = drop.getBoolean("drop-at-location", true);
-        String announcement = drop.getString("announcement", null);
+        String announcement = getNullableString(drop, "announcement");
         boolean playSound = drop.getBoolean("play-sound", true);
 
-        // Parse commands
         List<String> commands = drop.getStringList("commands");
 
         DropSpec spec = parseDropSpec(drop, type);
+        if (spec == null) return null;
 
         return new DropEntry(dropId, chance, dropAtLocation, announcement, playSound,
                 minAmount, maxAmount, spec, commands);
     }
 
-    /**
-     * Parse a legacy drop entry (old format).
-     */
     private DropEntry parseLegacyDropEntry(ConfigurationSection mobSection,
                                            ConfigurationSection drop, EntityType type) {
         double chance = validateChance(mobSection.getDouble("drop-chance", 0.0001),
                 type.name(), "default");
 
         boolean dropAtLocation = mobSection.getBoolean("drop-at-location", true);
-        String announcement = mobSection.getString("announcement", null);
+        String announcement = getNullableString(mobSection, "announcement");
         int amount = Math.max(1, drop.getInt("amount", 1));
 
-        // Parse commands (legacy format might have commands at mob level)
         List<String> commands = mobSection.getStringList("commands");
 
         DropSpec spec = parseDropSpec(drop, type);
+        if (spec == null) return null;
 
         return new DropEntry("default", chance, dropAtLocation, announcement, true,
                 amount, amount, spec, commands);
     }
 
-    /**
-     * Parse amount range string (e.g., "1-3" or "5").
-     * @return array [min, max]
-     */
     private int[] parseAmountRange(String amountStr) {
         if (amountStr.contains("-")) {
             String[] parts = amountStr.split("-");
@@ -227,9 +204,6 @@ public class DropConfigLoader {
         }
     }
 
-    /**
-     * Parse a DropSpec from a configuration section.
-     */
     private DropSpec parseDropSpec(ConfigurationSection drop, EntityType type) {
         String typeStr = drop.getString("type", "VANILLA").toUpperCase(Locale.ROOT);
         DropType dropType;
@@ -239,10 +213,10 @@ public class DropConfigLoader {
             dropType = DropType.VANILLA;
         }
 
-        String id = optTrim(drop.getString("item-id", drop.getString("id", null)));
+        String id = optTrim(drop.getString("item-id", drop.getString("id")));
 
         Material material = null;
-        String mat = optTrim(drop.getString("material", null));
+        String mat = optTrim(drop.getString("material"));
         if (mat != null) {
             try {
                 material = Material.valueOf(mat.toUpperCase(Locale.ROOT));
@@ -251,32 +225,29 @@ public class DropConfigLoader {
             }
         }
 
-        String name = drop.getString("name", null);
+        String name = drop.getString("name");
         List<String> lore = drop.getStringList("lore");
 
         return new DropSpec(dropType, id, 1, material, name, lore);
     }
 
-    /**
-     * Parse a DropSpec from a map.
-     */
     private DropSpec parseDropSpecFromMap(Map<?, ?> map, EntityType type) {
-        String typeStr = asString(map.get("type"), "VANILLA").toUpperCase(Locale.ROOT);
+        String typeStr = getMapString(map, "type", "VANILLA").toUpperCase(Locale.ROOT);
         DropType dropType;
         try {
             dropType = DropType.valueOf(typeStr);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException ex) {
             dropType = DropType.VANILLA;
         }
 
-        // Item id key flexibility
-        String itemId = asNullableString(map.get("item-id"));
+        String itemId = getMapString(map, "item-id", null);
         if (itemId == null) {
-            itemId = asNullableString(map.get("itemId"));
+            itemId = getMapString(map, "id", null);
         }
+        itemId = optTrim(itemId);
 
         Material material = null;
-        String mat = asNullableString(map.get("material"));
+        String mat = optTrim(getMapString(map, "material", null));
         if (mat != null) {
             try {
                 material = Material.valueOf(mat.toUpperCase(Locale.ROOT));
@@ -285,15 +256,12 @@ public class DropConfigLoader {
             }
         }
 
-        String name = asNullableString(map.get("name"));
-        List<String> lore = asStringList(map.get("lore"));
+        String name = getMapString(map, "name", null);
+        List<String> lore = getMapStringList(map, "lore");
 
         return new DropSpec(dropType, itemId, 1, material, name, lore);
     }
 
-    /**
-     * Validate and clamp chance value, warn if invalid.
-     */
     private double validateChance(double rawChance, String mobName, String dropId) {
         if (rawChance < 0.0 || rawChance > 1.0) {
             plugin.getLogger().warning("Invalid chance " + rawChance + " for " + mobName +
@@ -302,30 +270,60 @@ public class DropConfigLoader {
         return Math.max(0.0, Math.min(1.0, rawChance));
     }
 
-    // Helper methods for type conversion
-    private static String asNullableString(Object o) {
-        return (o == null) ? null : String.valueOf(o);
+    private static String getNullableString(ConfigurationSection section, String key) {
+        if (!section.contains(key)) return null;
+        String value = section.getString(key);
+        if (value != null && value.equalsIgnoreCase("null")) return null;
+        return value;
     }
 
-    private static String asString(Object o, String def) {
-        return (o == null) ? def : String.valueOf(o);
+    private static String getNullableMapString(Map<?, ?> map, String key) {
+        Object value = map.get(key);
+        if (value == null) return null;
+        String str = String.valueOf(value);
+        if (str.equalsIgnoreCase("null")) return null;
+        return str;
     }
 
-    private static boolean asBoolean(Object o, boolean def) {
-        return (o instanceof Boolean b) ? b : def;
+    private static String getMapString(Map<?, ?> map, String key, String defaultValue) {
+        Object value = map.get(key);
+        if (value == null) return defaultValue;
+        return String.valueOf(value);
     }
 
-    private static double asDouble(Object o, double def) {
-        return (o instanceof Number n) ? n.doubleValue() : def;
+    private static double getMapDouble(Map<?, ?> map, String key, double defaultValue) {
+        Object value = map.get(key);
+        if (value instanceof Number n) return n.doubleValue();
+        if (value instanceof String s) {
+            try { return Double.parseDouble(s); } catch (NumberFormatException e) { return defaultValue; }
+        }
+        return defaultValue;
     }
 
-    private static List<String> asStringList(Object o) {
-        if (o instanceof List<?> list) {
-            List<String> out = new ArrayList<>(list.size());
-            for (Object it : list) {
-                out.add(String.valueOf(it));
+    private static int getMapInt(Map<?, ?> map, String key, int defaultValue) {
+        Object value = map.get(key);
+        if (value instanceof Number n) return n.intValue();
+        if (value instanceof String s) {
+            try { return Integer.parseInt(s); } catch (NumberFormatException e) { return defaultValue; }
+        }
+        return defaultValue;
+    }
+
+    private static boolean getMapBoolean(Map<?, ?> map, String key, boolean defaultValue) {
+        Object value = map.get(key);
+        if (value instanceof Boolean b) return b;
+        if (value instanceof String s) return Boolean.parseBoolean(s);
+        return defaultValue;
+    }
+
+    private static List<String> getMapStringList(Map<?, ?> map, String key) {
+        Object value = map.get(key);
+        if (value instanceof List<?> list) {
+            List<String> result = new ArrayList<>();
+            for (Object item : list) {
+                if (item != null) result.add(String.valueOf(item));
             }
-            return out;
+            return result;
         }
         return Collections.emptyList();
     }

@@ -1,6 +1,6 @@
 package dev.oakheart.oakmobdrops.drop;
 
-import dev.oakheart.oakmobdrops.DropStatistics;
+import dev.oakheart.oakmobdrops.statistics.DropStatistics;
 import dev.oakheart.oakmobdrops.announcement.AnnouncementManager;
 import dev.oakheart.oakmobdrops.backend.DropBackend;
 import dev.oakheart.oakmobdrops.backend.DropRouter;
@@ -34,13 +34,14 @@ public class DropProcessor {
 
     public DropProcessor(JavaPlugin plugin, DropRouter router,
                          AnnouncementManager announcementManager,
+                         CommandExecutor commandExecutor,
                          DropStatistics statistics,
                          boolean debugMode, boolean useLootingEnchant,
                          double lootingMultiplier, boolean enableStatistics) {
         this.plugin = plugin;
         this.router = router;
         this.announcementManager = announcementManager;
-        this.commandExecutor = new CommandExecutor(plugin, debugMode);
+        this.commandExecutor = commandExecutor;
         this.statistics = statistics;
         this.debugMode = debugMode;
         this.useLootingEnchant = useLootingEnchant;

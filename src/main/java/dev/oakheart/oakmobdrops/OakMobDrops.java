@@ -1,42 +1,37 @@
 package dev.oakheart.oakmobdrops;
 
 import dev.oakheart.oakmobdrops.announcement.AnnouncementManager;
-import dev.oakheart.oakmobdrops.backend.*;
-import dev.oakheart.oakmobdrops.command.CommandHandler;
+import dev.oakheart.oakmobdrops.backend.DropRouter;
+import dev.oakheart.oakmobdrops.config.ConfigManager;
 import dev.oakheart.oakmobdrops.config.DropConfigLoader;
+import dev.oakheart.oakmobdrops.data.JsonStatisticsDataStore;
+import dev.oakheart.oakmobdrops.data.SQLiteStatisticsDataStore;
+import dev.oakheart.oakmobdrops.data.StatisticsDataStore;
 import dev.oakheart.oakmobdrops.drop.DropProcessor;
-import dev.oakheart.oakmobdrops.listener.MobDropListener;
+import dev.oakheart.oakmobdrops.listeners.MobDropListener;
+import dev.oakheart.oakmobdrops.message.MessageManager;
 import dev.oakheart.oakmobdrops.model.*;
+import dev.oakheart.oakmobdrops.statistics.DropStatistics;
 import dev.oakheart.oakmobdrops.util.CommandExecutor;
 import dev.oakheart.oakmobdrops.util.FormatUtils;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bstats.bukkit.Metrics;
 import org.bstats.charts.SimplePie;
 import org.bukkit.NamespacedKey;
-import org.bukkit.Registry;
-import org.bukkit.Sound;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.EntityType;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
 import java.util.*;
+import java.util.logging.Level;
 
-/**
- * OakMobDrops - Advanced mob drop system with multi-backend support and statistics.
- *
- * @author Loralon
- * @version 1.2.0
- */
 public final class OakMobDrops extends JavaPlugin {
 
     // Configuration
+    private ConfigManager configManager;
+    private MessageManager messageManager;
     private Map<EntityType, MobDropConfig> mobConfigs = new HashMap<>();
-    private boolean debugMode;
-    private boolean useLootingEnchant;
-    private double lootingMultiplier;
-    private boolean globalAllowSpawnerDrops;
-    private boolean inheritSpawnerTag;
-    private double searchRadius;
 
     // Components
     private DropRouter router;
@@ -47,73 +42,72 @@ public final class OakMobDrops extends JavaPlugin {
     private MiniMessage miniMessage;
     private CommandExecutor commandExecutor;
 
-    // Statistics settings
-    private boolean enableStatistics;
-    private int autoSaveInterval;
-    private int maxPlayerStats;
-
     // Spawner tracking
     private NamespacedKey spawnerMobKey;
 
     @Override
     public void onEnable() {
-        saveDefaultConfig();
+        try {
+            initializeComponents();
+            registerListeners();
+            registerCommands();
+            initializeMetrics();
+            registerPlaceholders();
 
-        // Initialize namespaced key
-        spawnerMobKey = new NamespacedKey(this, "from_spawner");
+            getLogger().info("OakMobDrops v" + getPluginMeta().getVersion() + " has been enabled!");
+            getLogger().info("Loaded " + mobConfigs.size() + " mob configurations.");
 
-        // Load configuration
-        loadConfiguration();
+            int totalDrops = mobConfigs.values().stream()
+                    .mapToInt(config -> config.drops().size())
+                    .sum();
+            getLogger().info("Total drop entries: " + totalDrops);
 
-        // Register event listeners
-        getServer().getPluginManager().registerEvents(
-                new MobDropListener(this, spawnerMobKey), this);
-
-        // Register command handler
-        CommandHandler cmdHandler = new CommandHandler(this, miniMessage);
-        var cmd = getCommand("oakmobdrops");
-        if (cmd != null) {
-            cmd.setExecutor(cmdHandler);
-            cmd.setTabCompleter(cmdHandler);
-        }
-
-        // Log startup info
-        getLogger().info("OakMobDrops v" + getPluginMeta().getVersion() + " has been enabled!");
-        getLogger().info("Loaded " + mobConfigs.size() + " mob configurations.");
-
-        int totalDrops = mobConfigs.values().stream()
-                .mapToInt(config -> config.drops().size())
-                .sum();
-        getLogger().info("Total drop entries: " + totalDrops);
-
-        if (debugMode) {
-            getLogger().info("Debug mode is ENABLED - extra logging will be shown");
-        }
-
-        // Initialize bStats metrics
-        initializeMetrics();
-
-        // Register PlaceholderAPI hook if available
-        if (getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            new dev.oakheart.oakmobdrops.hook.PlaceholderAPIHook(this).register();
-            getLogger().info("PlaceholderAPI integration enabled.");
+            if (configManager.isDebug()) {
+                getLogger().info("Debug mode is ENABLED - extra logging will be shown");
+            }
+        } catch (Exception e) {
+            getLogger().log(Level.SEVERE, "Failed to enable OakMobDrops", e);
+            getServer().getPluginManager().disablePlugin(this);
         }
     }
 
     @Override
     public void onDisable() {
+        // Statistics — save data, stop autosave task, close data store
         if (statistics != null) {
             statistics.stopAutosave();
             statistics.save();
-            getLogger().info("Statistics saved.");
+            statistics.getDataStore().close();
         }
+
+        // Other components (configManager, messageManager, router, dropProcessor, etc.)
+        // are plain objects with no shutdown logic — Paper handles listener/command cleanup.
 
         getLogger().info("OakMobDrops has been disabled!");
     }
 
-    /**
-     * Initialize bStats metrics tracking.
-     */
+    private void initializeComponents() {
+        spawnerMobKey = new NamespacedKey(this, "from_spawner");
+
+        configManager = new ConfigManager(this);
+        configManager.load();
+
+        messageManager = new MessageManager();
+        messageManager.load(configManager.getConfig());
+
+        // Load all components from configuration
+        loadConfiguration();
+    }
+
+    private void registerListeners() {
+        getServer().getPluginManager().registerEvents(
+                new MobDropListener(this, spawnerMobKey), this);
+    }
+
+    private void registerCommands() {
+        new dev.oakheart.oakmobdrops.commands.OakMobDropsCommand(this, miniMessage, messageManager).register();
+    }
+
     private void initializeMetrics() {
         int pluginId = 28020;
         Metrics metrics = new Metrics(this, pluginId);
@@ -148,59 +142,46 @@ public final class OakMobDrops extends JavaPlugin {
         }));
 
         metrics.addCustomChart(new SimplePie("statistics_enabled", () ->
-            enableStatistics ? "Enabled" : "Disabled"
+            configManager.isStatisticsEnabled() ? "Enabled" : "Disabled"
         ));
 
         metrics.addCustomChart(new SimplePie("spawner_drops", () ->
-            globalAllowSpawnerDrops ? "Allowed" : "Blocked"
+            configManager.isGlobalAllowSpawnerDrops() ? "Allowed" : "Blocked"
         ));
 
-        if (debugMode) {
+        if (configManager.isDebug()) {
             getLogger().info("bStats metrics initialized successfully!");
         }
     }
 
-    /**
-     * Load or reload all configuration settings and components.
-     * Package-private for use by CommandHandler reload.
-     */
+    private void registerPlaceholders() {
+        if (getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            new dev.oakheart.oakmobdrops.hook.PlaceholderAPIHook(this).register();
+            getLogger().info("PlaceholderAPI integration enabled.");
+        } else {
+            getLogger().info("PlaceholderAPI not found. Placeholders will not be available.");
+        }
+    }
+
     public void loadConfiguration() {
         // Initialize MiniMessage if not already done
         if (miniMessage == null) {
             miniMessage = MiniMessage.miniMessage();
         }
 
-        // Clear old caches
-        if (announcementManager != null) {
-            announcementManager.clearCaches();
+        // Reload messages
+        if (messageManager != null) {
+            messageManager.load(configManager.getConfig());
         }
 
-        // Load basic settings
-        debugMode = getConfig().getBoolean("settings.debug", false);
-        useLootingEnchant = getConfig().getBoolean("settings.use-looting-enchantment", true);
-        lootingMultiplier = getConfig().getDouble("settings.looting-multiplier", 0.5);
-        globalAllowSpawnerDrops = getConfig().getBoolean("settings.allow-spawner-drops", false);
-        inheritSpawnerTag = getConfig().getBoolean("settings.inherit-spawner-tag", true);
-        searchRadius = getConfig().getDouble("settings.drop-recipient-search-radius", 50.0);
-
-        // Sound configuration
-        String rawSound = getConfig().getString("settings.sound", "minecraft:ui.toast.challenge_complete");
-        NamespacedKey soundKey = NamespacedKey.fromString(rawSound);
-        Sound dropSound = (soundKey != null) ? Registry.SOUNDS.get(soundKey) : null;
-
-        if (dropSound == null) {
-            NamespacedKey fallbackKey = NamespacedKey.minecraft("ui.toast.challenge_complete");
-            dropSound = Registry.SOUNDS.get(fallbackKey);
-            getLogger().warning("Unknown sound '" + rawSound + "'; using minecraft:ui.toast.challenge_complete");
-        }
-
-        boolean playSound = getConfig().getBoolean("settings.play-sound", true);
-        String globalAnnouncement = getConfig().getString("settings.global-announcement", "");
-
-        // Statistics settings
-        enableStatistics = getConfig().getBoolean("settings.enable-statistics", true);
-        autoSaveInterval = getConfig().getInt("settings.statistics-autosave-interval", 5);
-        maxPlayerStats = getConfig().getInt("settings.max-player-stats", 1000);
+        // Read cached values from ConfigManager
+        boolean debugMode = configManager.isDebug();
+        boolean useLootingEnchant = configManager.isUseLootingEnchant();
+        double lootingMultiplier = configManager.getLootingMultiplier();
+        boolean globalAllowSpawnerDrops = configManager.isGlobalAllowSpawnerDrops();
+        boolean enableStatistics = configManager.isStatisticsEnabled();
+        int autoSaveInterval = configManager.getAutoSaveInterval();
+        int maxPlayerStats = configManager.getMaxPlayerStats();
 
         // Initialize router (must be done before other components)
         if (router == null) {
@@ -220,18 +201,18 @@ public final class OakMobDrops extends JavaPlugin {
         }
 
         // Initialize announcement manager
-        NexoBackend nexoBackend = (NexoBackend) router.forType(DropType.NEXO);
-        ItemsAdderBackend iaBackend = (ItemsAdderBackend) router.forType(DropType.ITEMSADDER);
-        announcementManager = new AnnouncementManager(this, nexoBackend, iaBackend,
-                globalAnnouncement, playSound, dropSound);
+        announcementManager = new AnnouncementManager(this, router,
+                configManager.getGlobalAnnouncement(), configManager.isPlaySound(),
+                configManager.getDropSound());
 
         // Initialize or update statistics
         if (enableStatistics) {
             if (statistics == null) {
-                statistics = new DropStatistics(this, maxPlayerStats);
+                StatisticsDataStore dataStore = createDataStore(configManager.getStorageType());
+                statistics = new DropStatistics(this, maxPlayerStats, dataStore);
                 statistics.startAutosave(autoSaveInterval);
-                getLogger().info("Statistics tracking enabled (auto-save every " +
-                        autoSaveInterval + " minutes)");
+                getLogger().info("Statistics tracking enabled (" + dataStore.getTypeName() +
+                        " backend, auto-save every " + autoSaveInterval + " minutes)");
             } else {
                 statistics.stopAutosave();
                 statistics.setMaxPlayerStats(maxPlayerStats);
@@ -248,14 +229,14 @@ public final class OakMobDrops extends JavaPlugin {
         commandExecutor = new CommandExecutor(this, debugMode);
 
         // Initialize drop processor
-        dropProcessor = new DropProcessor(this, router, announcementManager, statistics,
-                debugMode, useLootingEnchant, lootingMultiplier, enableStatistics);
+        dropProcessor = new DropProcessor(this, router, announcementManager, commandExecutor,
+                statistics, debugMode, useLootingEnchant, lootingMultiplier, enableStatistics);
 
         // Initialize config loader
         configLoader = new DropConfigLoader(this, debugMode);
 
         // Load mob configurations
-        ConfigurationSection mobsSection = getConfig().getConfigurationSection("mobs");
+        ConfigurationSection mobsSection = configManager.getMobsSection();
         mobConfigs = configLoader.loadMobConfigs(mobsSection, globalAllowSpawnerDrops);
 
         // Validate backends and log summary
@@ -263,9 +244,6 @@ public final class OakMobDrops extends JavaPlugin {
         logConfigSummary();
     }
 
-    /**
-     * Warn about drops that reference unavailable backends.
-     */
     private void validateDropBackends() {
         for (var entry : mobConfigs.entrySet()) {
             EntityType mobType = entry.getKey();
@@ -280,9 +258,6 @@ public final class OakMobDrops extends JavaPlugin {
         }
     }
 
-    /**
-     * Log a summary of loaded configurations at startup.
-     */
     private void logConfigSummary() {
         if (mobConfigs.isEmpty()) {
             return;
@@ -307,10 +282,57 @@ public final class OakMobDrops extends JavaPlugin {
         }
     }
 
-    // ===== Getters for components =====
+    /**
+     * Create and initialize the appropriate data store based on config.
+     * Handles auto-migration from JSON if storage-type is sqlite but statistics.json exists.
+     */
+    private StatisticsDataStore createDataStore(String storageType) {
+        try {
+            if ("sqlite".equals(storageType)) {
+                File jsonFile = new File(getDataFolder(), "statistics.json");
+                File dbFile = new File(getDataFolder(), "statistics.db");
+
+                // Auto-migrate: JSON file exists but no DB yet
+                if (jsonFile.exists() && !dbFile.exists()) {
+                    getLogger().info("Auto-migrating statistics from JSON to SQLite...");
+                    JsonStatisticsDataStore jsonStore = new JsonStatisticsDataStore(getDataFolder(), getLogger());
+                    jsonStore.initialize();
+                    DropStatistics.StatsSaveData allData = jsonStore.loadAll();
+                    jsonStore.close();
+
+                    SQLiteStatisticsDataStore sqliteStore = new SQLiteStatisticsDataStore(getDataFolder(), getLogger());
+                    sqliteStore.initialize();
+                    sqliteStore.saveAll(allData);
+
+                    // Rename old JSON file
+                    File migrated = new File(getDataFolder(), "statistics.json.migrated");
+                    //noinspection ResultOfMethodCallIgnored
+                    jsonFile.renameTo(migrated);
+                    getLogger().info("Migration complete. Old data backed up as statistics.json.migrated");
+                    return sqliteStore;
+                }
+
+                SQLiteStatisticsDataStore sqliteStore = new SQLiteStatisticsDataStore(getDataFolder(), getLogger());
+                sqliteStore.initialize();
+                return sqliteStore;
+            }
+
+            // Default: JSON
+            JsonStatisticsDataStore jsonStore = new JsonStatisticsDataStore(getDataFolder(), getLogger());
+            jsonStore.initialize();
+            return jsonStore;
+        } catch (Exception e) {
+            getLogger().log(Level.SEVERE, "Failed to initialize " + storageType + " data store, falling back to JSON", e);
+            JsonStatisticsDataStore fallback = new JsonStatisticsDataStore(getDataFolder(), getLogger());
+            fallback.initialize();
+            return fallback;
+        }
+    }
+
+    // ===== Getters =====
 
     public Map<EntityType, MobDropConfig> getMobConfigs() {
-        return mobConfigs;
+        return Collections.unmodifiableMap(mobConfigs);
     }
 
     public DropRouter getRouter() {
@@ -337,20 +359,28 @@ public final class OakMobDrops extends JavaPlugin {
         return miniMessage;
     }
 
+    public ConfigManager getConfigManager() {
+        return configManager;
+    }
+
+    public MessageManager getMessageManager() {
+        return messageManager;
+    }
+
     public boolean isStatisticsEnabled() {
-        return enableStatistics;
+        return configManager.isStatisticsEnabled();
     }
 
     public boolean isDebugMode() {
-        return debugMode;
+        return configManager.isDebug();
     }
 
     public double getSearchRadius() {
-        return searchRadius;
+        return configManager.getSearchRadius();
     }
 
     public boolean isInheritSpawnerTag() {
-        return inheritSpawnerTag;
+        return configManager.isInheritSpawnerTag();
     }
 
     public NamespacedKey getSpawnerMobKey() {

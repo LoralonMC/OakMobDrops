@@ -1,10 +1,14 @@
 package dev.oakheart.oakmobdrops.backend;
 
 import dev.oakheart.oakmobdrops.model.DropSpec;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * Interface for item drop backends.
@@ -19,12 +23,19 @@ public interface DropBackend {
     boolean isPresent();
 
     /**
-     * Give an item directly to a player.
+     * Give an item directly to a player. Overflow drops naturally at the player's location.
      * @param player the player to receive the item
      * @param spec the item specification
      * @return true if the item was successfully given
      */
-    boolean give(Player player, DropSpec spec);
+    default boolean give(Player player, DropSpec spec) {
+        ItemStack item = createItem(spec, player);
+        if (item == null) return false;
+        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
+        leftovers.values().forEach(stack ->
+                player.getWorld().dropItemNaturally(player.getLocation(), stack));
+        return true;
+    }
 
     /**
      * Drop an item at a location.
@@ -32,7 +43,12 @@ public interface DropBackend {
      * @param spec the item specification
      * @return true if the item was successfully dropped
      */
-    boolean drop(Location location, DropSpec spec);
+    default boolean drop(Location location, DropSpec spec) {
+        ItemStack item = createItem(spec, null);
+        if (item == null) return false;
+        location.getWorld().dropItemNaturally(location, item);
+        return true;
+    }
 
     /**
      * Get the backend name for logging.
@@ -50,4 +66,22 @@ public interface DropBackend {
      */
     @Nullable
     ItemStack createItem(DropSpec spec, @Nullable Player creator);
+
+    /**
+     * Get display name for an item by its ID.
+     * Override in backends that support direct name lookups (Nexo, ItemsAdder, ExecutableItems).
+     */
+    @Nullable
+    default Component getDisplayName(String itemId) {
+        return null;
+    }
+
+    /**
+     * Get lore for an item by its ID.
+     * Override in backends that support direct lore lookups (Nexo, ItemsAdder, ExecutableItems).
+     */
+    @Nullable
+    default List<Component> getLore(String itemId) {
+        return null;
+    }
 }

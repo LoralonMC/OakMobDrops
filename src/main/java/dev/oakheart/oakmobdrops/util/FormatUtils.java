@@ -20,6 +20,7 @@ public final class FormatUtils {
         String[] words = enumName.toLowerCase(Locale.ROOT).split("_");
         StringBuilder sb = new StringBuilder();
         for (String w : words) {
+            if (w.isEmpty()) continue;
             if (!sb.isEmpty()) sb.append(' ');
             sb.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
         }

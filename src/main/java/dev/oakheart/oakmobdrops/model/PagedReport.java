@@ -1,6 +1,6 @@
 package dev.oakheart.oakmobdrops.model;
 
-import dev.oakheart.oakmobdrops.DropStatistics;
+import dev.oakheart.oakmobdrops.statistics.DropStatistics;
 
 import java.util.List;
 

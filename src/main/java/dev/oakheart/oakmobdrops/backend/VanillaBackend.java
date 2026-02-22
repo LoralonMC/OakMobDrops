@@ -3,7 +3,6 @@ package dev.oakheart.oakmobdrops.backend;
 import dev.oakheart.oakmobdrops.model.DropSpec;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -11,7 +10,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Backend for vanilla Minecraft items.
@@ -33,23 +31,6 @@ public class VanillaBackend implements DropBackend {
     @Nullable
     public ItemStack createItem(DropSpec spec, @Nullable Player creator) {
         return buildItem(spec);
-    }
-
-    @Override
-    public boolean give(Player player, DropSpec spec) {
-        ItemStack item = buildItem(spec);
-        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
-        if (!leftovers.isEmpty()) {
-            leftovers.values().forEach(stack ->
-                player.getWorld().dropItemNaturally(player.getLocation(), stack));
-        }
-        return true;
-    }
-
-    @Override
-    public boolean drop(Location location, DropSpec spec) {
-        location.getWorld().dropItemNaturally(location, buildItem(spec));
-        return true;
     }
 
     /**

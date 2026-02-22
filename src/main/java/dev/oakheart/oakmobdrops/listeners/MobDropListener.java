@@ -1,6 +1,6 @@
-package dev.oakheart.oakmobdrops.listener;
+package dev.oakheart.oakmobdrops.listeners;
 
-import dev.oakheart.oakmobdrops.DropStatistics;
+import dev.oakheart.oakmobdrops.statistics.DropStatistics;
 import dev.oakheart.oakmobdrops.OakMobDrops;
 import dev.oakheart.oakmobdrops.model.DropEntry;
 import dev.oakheart.oakmobdrops.model.MobDropConfig;
@@ -81,7 +81,7 @@ public class MobDropListener implements Listener {
     /**
      * Handle mob deaths and process drops.
      */
-    @EventHandler(priority = EventPriority.NORMAL)
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onEntityDeath(EntityDeathEvent event) {
         LivingEntity entity = event.getEntity();
         EntityType entityType = entity.getType();

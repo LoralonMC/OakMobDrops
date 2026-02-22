@@ -1,26 +1,12 @@
 package dev.oakheart.oakmobdrops.hook;
 
-import dev.oakheart.oakmobdrops.DropStatistics;
+import dev.oakheart.oakmobdrops.statistics.DropStatistics;
 import dev.oakheart.oakmobdrops.OakMobDrops;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.OfflinePlayer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * PlaceholderAPI expansion for OakMobDrops.
- * Provides placeholders for drop statistics.
- *
- * <p>Available placeholders:</p>
- * <ul>
- *   <li>%oakmobdrops_total_kills% - Total mob kills tracked</li>
- *   <li>%oakmobdrops_total_drops% - Total drops given</li>
- *   <li>%oakmobdrops_total_eligible_kills% - Total eligible kills</li>
- *   <li>%oakmobdrops_player_kills% - Player's mob kills</li>
- *   <li>%oakmobdrops_player_drops% - Player's drops received</li>
- *   <li>%oakmobdrops_player_eligible_kills% - Player's eligible kills</li>
- * </ul>
- */
 public class PlaceholderAPIHook extends PlaceholderExpansion {
     private final OakMobDrops plugin;
 
@@ -56,20 +42,20 @@ public class PlaceholderAPIHook extends PlaceholderExpansion {
         }
 
         return switch (params.toLowerCase()) {
-            case "total_kills" -> String.format("%,d", statistics.getTotalKills());
-            case "total_drops" -> String.format("%,d", statistics.getTotalDrops());
-            case "total_eligible_kills" -> String.format("%,d", statistics.getTotalEligibleKills());
+            case "total_kills" -> String.valueOf(statistics.getTotalKills());
+            case "total_drops" -> String.valueOf(statistics.getTotalDrops());
+            case "total_eligible_kills" -> String.valueOf(statistics.getTotalEligibleKills());
             case "player_kills" -> {
                 if (player == null) yield "0";
-                yield String.format("%,d", statistics.getPlayerKills(player.getUniqueId()));
+                yield String.valueOf(statistics.getPlayerKills(player.getUniqueId()));
             }
             case "player_drops" -> {
                 if (player == null) yield "0";
-                yield String.format("%,d", statistics.getPlayerDrops(player.getUniqueId()));
+                yield String.valueOf(statistics.getPlayerDrops(player.getUniqueId()));
             }
             case "player_eligible_kills" -> {
                 if (player == null) yield "0";
-                yield String.format("%,d", statistics.getPlayerEligibleKills(player.getUniqueId()));
+                yield String.valueOf(statistics.getPlayerEligibleKills(player.getUniqueId()));
             }
             default -> null;
         };

@@ -1,0 +1,22 @@
+name: OakMobDrops
+version: '${version}'
+main: dev.oakheart.oakmobdrops.OakMobDrops
+description: 'Advanced mob drop system with multi-backend support and statistics.'
+api-version: '1.21.10'
+authors:
+  - Loralon
+website: https://github.com/LoralonMC/OakMobDrops
+dependencies:
+  server:
+    ExecutableItems:
+      load: BEFORE
+      required: false
+    ItemsAdder:
+      load: BEFORE
+      required: false
+    Nexo:
+      load: BEFORE
+      required: false
+    PlaceholderAPI:
+      load: BEFORE
+      required: false

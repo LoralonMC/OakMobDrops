@@ -1,49 +1,40 @@
-name: OakMobDrops
-version: '${version}'
-main: dev.oakheart.oakmobdrops.OakMobDrops
-api-version: '1.21'
-prefix: OakMobDrops
-authors: [ Loralon ]
-description: Advanced mob drop system with multi-backend support and statistics
-
-softdepend: [ExecutableItems, ItemsAdder, Nexo, SCore, PlaceholderAPI]
-
-commands:
-  oakmobdrops:
-    description: Main command for OakMobDrops
-    usage: |
-      /<command> - Show help
-      /<command> reload - Reload configuration
-      /<command> stats [type] [page] - View statistics (10 per page)
-      /<command> stats player <name> - View individual player stats
-      /<command> test <mob> <drop> [player] [--full] - Test a drop
-      /<command> clearstats [confirm] - Reset all statistics
-      /<command> list - Show configured mob drops
-    aliases: [omd, mobdrops]
-    permission: oakmobdrops.use
-
 permissions:
-  oakmobdrops.use:
-    description: Allows use of the base OakMobDrops command
-    default: op
-
-  oakmobdrops.reload:
-    description: Allows reloading the configuration
-    default: op
-
-  oakmobdrops.stats:
-    description: Allows viewing drop statistics
-    default: op
-
-  oakmobdrops.test:
-    description: Allows testing drops without killing mobs
-    default: op
-
-  oakmobdrops.admin:
-    description: All OakMobDrops permissions
+  oakmobdrops.*:
+    description: 'Grants all OakMobDrops permissions'
     default: op
     children:
       oakmobdrops.use: true
       oakmobdrops.reload: true
       oakmobdrops.stats: true
       oakmobdrops.test: true
+      oakmobdrops.list: true
+      oakmobdrops.clearstats: true
+      oakmobdrops.migrate: true
+
+  oakmobdrops.use:
+    description: 'Allows use of the base OakMobDrops command'
+    default: op
+
+  oakmobdrops.reload:
+    description: 'Reload configuration'
+    default: op
+
+  oakmobdrops.stats:
+    description: 'View drop statistics'
+    default: op
+
+  oakmobdrops.test:
+    description: 'Test drops without killing mobs'
+    default: op
+
+  oakmobdrops.list:
+    description: 'List configured mob drops'
+    default: op
+
+  oakmobdrops.clearstats:
+    description: 'Clear all statistics data'
+    default: op
+
+  oakmobdrops.migrate:
+    description: 'Migrate statistics between storage types'
+    default: op

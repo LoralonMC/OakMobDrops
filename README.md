@@ -1,147 +1,80 @@
 # OakMobDrops
 
-A feature-rich Minecraft Paper plugin for advanced custom mob drop management with multi-backend support and comprehensive statistics tracking.
+Advanced custom mob drop system with multi-backend support, announcements, and comprehensive statistics.
 
 ## Features
 
-- **Multi-Backend Support**: Seamlessly integrates with ExecutableItems, ItemsAdder, Nexo, and vanilla Minecraft items
-- **Multiple Independent Drops**: Configure multiple drops per mob, each with independent drop rates
-- **Looting Enchantment Support**: Configurable looting enchantment multipliers for drop chances
-- **Spawner Tracking**: Track and control drops from spawner-spawned mobs, with slime split inheritance
-- **Comprehensive Statistics**:
-  - Detailed per-player statistics with first seen, eligible kills, spawner kills, and favorite drops
-  - Per-mob breakdowns showing total, eligible, and spawner kills
-  - Top farmers leaderboard and rarest drops tracking
-  - Expected vs actual drop rate variance analysis
-- **bStats Integration**: Anonymous usage statistics to help improve the plugin
-- **Announcement System**: Customizable global and per-drop announcements using MiniMessage formatting
-- **Command Execution**: Execute console commands when rare drops occur (perfect for DiscordSRV integration, economy rewards, etc.)
-- **Flexible Configuration**: Range-based amounts, per-mob settings, and location-based or direct drops
+- **Multi-backend support** for ExecutableItems, ItemsAdder, Nexo, and vanilla Minecraft items
+- **Multiple independent drops per mob**, each with configurable drop rates and amount ranges
+- **Looting enchantment support** with configurable multipliers
+- **Spawner tracking** to control drops from spawner-spawned mobs, with slime split inheritance
+- **Announcement system** using MiniMessage format with item hover tooltips
+- **Command execution** on drop success with placeholder support (DiscordSRV, economy, etc.)
+- **Comprehensive statistics** with per-player breakdowns, rarest drops, expected vs actual rates
+- **PlaceholderAPI integration** with 6 placeholders for scoreboards and other plugins
+- **Config-driven messages** — all player-facing text is customizable via config.yml
 
 ## Requirements
 
-- **Server**: Paper 1.21+ (or any Paper-based fork)
+- **Server**: Paper 1.21.10+
 - **Java**: 21+
-- **Optional Dependencies**: ExecutableItems, ItemsAdder, Nexo, SCore (plugin detects which are available)
+- **Optional**: ExecutableItems, ItemsAdder, Nexo, PlaceholderAPI (auto-detected)
 
 ## Installation
 
 1. Download the latest release from the [Releases](../../releases) page
-2. Place the JAR file in your server's `plugins` folder
-3. Restart your server
-4. Configure the plugin by editing `plugins/OakMobDrops/config.yml`
-5. Run `/oakmobdrops reload` to apply your changes
-
-## Configuration
-
-The plugin uses a straightforward YAML configuration. Here's a basic example:
-
-```yaml
-settings:
-  debug: false
-  use-looting-enchantment: true
-  looting-multiplier: 0.5
-  allow-spawner-drops: false
-  enable-statistics: true
-  global-announcement: "<gold><bold>⚡</bold></gold> <yellow>%player%</yellow> <gray>just received</gray> <aqua>%amount%x %item%</aqua> <gray>from a</gray> <red>%mob%</red><gray>!</gray>"
-
-mobs:
-  ZOMBIE:
-    enabled: true
-    require-player-kill: true
-    allow-spawner-drops: false
-    drops:
-      - id: zombie_pet
-        chance: 0.0001  # 0.01% = 1 in 10,000
-        type: NEXO
-        item-id: nm_plushie_zombie
-        amount: 1
-        drop-at-location: true
-        announcement: "<dark_green><bold>🧟 ZOMBIE PET!</bold></dark_green> <green>%player%</green> <gray>tamed an undead companion!</gray>"
-        play-sound: true
-        commands:
-          - "discordsrv broadcast 🎉 %player% just received a %item%!"
-```
-
-See the included `config.yml` for comprehensive examples and documentation.
-
-### Configuration Highlights
-
-- **Drop Types**: EXECUTABLE_ITEMS, ITEMSADDER, NEXO, VANILLA
-- **Amount Ranges**: Specify ranges like "5-10" for random amounts
-- **Announcements**: Use "global" for global message, custom MiniMessage string, or null for no announcement
-- **Commands**: Execute console commands with placeholder support when drops occur
-- **Placeholders**: `%player%`, `%mob%`, `%item%`, `%amount%`, `%chance%`, `%chance-fraction%`
+2. Place the JAR in your server's `plugins/` folder
+3. Restart the server
+4. Edit `plugins/OakMobDrops/config.yml` to configure mob drops
+5. Run `/omd reload` to apply changes
 
 ## Commands
 
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `/oakmobdrops` | Show plugin help | `oakmobdrops.use` |
-| `/oakmobdrops reload` | Reload configuration | `oakmobdrops.reload` |
-| `/oakmobdrops stats [type] [page]` | View statistics | `oakmobdrops.stats` |
-| `/oakmobdrops test <mob> <drop> [player]` | Test a drop | `oakmobdrops.test` |
-| `/oakmobdrops clearstats` | Reset all statistics | `oakmobdrops.admin` |
+| `/omd` | Show help | `oakmobdrops.use` |
+| `/omd reload` | Reload configuration | `oakmobdrops.reload` |
+| `/omd list` | List all configured mob drops | `oakmobdrops.list` |
+| `/omd stats [type] [page]` | View statistics (overview, rarest, players, mobs, variance) | `oakmobdrops.stats` |
+| `/omd stats player <name>` | View detailed player statistics | `oakmobdrops.stats` |
+| `/omd test <mob> <drop> [player] [--full]` | Test a drop (`--full` fires announcements and records stats) | `oakmobdrops.test` |
+| `/omd clearstats` | Reset all statistics (requires confirmation) | `oakmobdrops.clearstats` |
 
-**Aliases**: `/omd`, `/mobdrops`
-
-### Statistics Types
-
-- `overview` - General statistics summary
-- `rarest` - Rarest drops obtained by all players
-- `players` - Top farmers leaderboard (sorted by kills)
-- `players <name>` - Detailed stats for a specific player (kills, drops, favorite items, per-mob breakdown)
-- `mobs` - Per-mob statistics breakdown
-- `variance` - Expected vs actual drop rates
+**Aliases**: `/oakmobdrops`, `/mobdrops`
 
 ## Permissions
 
 | Permission | Description | Default |
 |------------|-------------|---------|
+| `oakmobdrops.*` | All OakMobDrops permissions | op |
 | `oakmobdrops.use` | Base command access | op |
 | `oakmobdrops.reload` | Reload configuration | op |
+| `oakmobdrops.list` | List configured drops | op |
 | `oakmobdrops.stats` | View statistics | op |
 | `oakmobdrops.test` | Test drops | op |
-| `oakmobdrops.admin` | All permissions | op |
+| `oakmobdrops.clearstats` | Clear all statistics | op |
 
-## Building from Source
+## Configuration
 
-```bash
-git clone https://github.com/LoralonMC/OakMobDrops.git
-cd OakMobDrops
-./gradlew build
-```
+The plugin uses a single `config.yml` with sections for general settings, mob drop definitions, and customizable messages.
 
-The compiled JAR will be in `build/libs/`.
+**Key settings**: looting multiplier, spawner drop control, global announcements, statistics tracking, sound effects, and search radius for drop recipients.
 
-## Support
+**Drop types**: `VANILLA`, `NEXO`, `ITEMSADDER`, `EXECUTABLE_ITEMS`
 
-If you encounter any issues or have suggestions:
+**Placeholders** (used in announcements and commands): `<player>`, `<mob>`, `<item>`, `<amount>`, `<chance>`, `<chance_fraction>`
 
-- Open an issue on [GitHub Issues](../../issues)
-- Check existing issues for solutions
-- Provide server version, plugin version, and error logs when reporting bugs
+See the included `config.yml` for full documentation and examples.
 
-## License
+## Placeholders
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Requires [PlaceholderAPI](https://www.spigotmc.org/resources/6245/). All placeholders use the `oakmobdrops` prefix.
 
-## Credits
-
-Created by **Loralon**
-
-### Third-Party Libraries
-
-- [Paper API](https://papermc.io/) - Minecraft server platform
-- [Kyori Adventure](https://docs.advntr.dev/) - Text formatting and messaging
-- [bStats](https://bstats.org/) - Plugin metrics and analytics
-
-### Supported Plugins
-
-- [ExecutableItems](https://www.spigotmc.org/resources/77578/)
-- [ItemsAdder](https://www.spigotmc.org/resources/73355/)
-- [Nexo](https://mcmodels.net/products/13172/nexo)
-
----
-
-**Enjoy using OakMobDrops? Give it a star on GitHub!**
+| Placeholder | Description |
+|-------------|-------------|
+| `%oakmobdrops_total_kills%` | Total mobs killed (all players) |
+| `%oakmobdrops_total_drops%` | Total items dropped (all players) |
+| `%oakmobdrops_total_eligible_kills%` | Kills eligible for drops (all players) |
+| `%oakmobdrops_player_kills%` | Mobs killed by the player |
+| `%oakmobdrops_player_drops%` | Drops received by the player |
+| `%oakmobdrops_player_eligible_kills%` | Eligible kills by the player |

@@ -1,27 +1,20 @@
 package dev.oakheart.oakmobdrops.backend;
 
+import dev.oakheart.oakmobdrops.OakMobDrops;
 import dev.oakheart.oakmobdrops.model.DropSpec;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventPriority;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
-/**
- * Backend for Nexo plugin.
- * Supports both old and new API versions using reflection with method caching.
- */
 public class NexoBackend implements DropBackend {
-    private final JavaPlugin plugin;
-    private final boolean debugMode;
+    private final OakMobDrops plugin;
     private volatile boolean itemsReady = false;
 
     // Cached reflection methods (instance-level to avoid stale state across reloads)
@@ -39,9 +32,8 @@ public class NexoBackend implements DropBackend {
     private volatile boolean reflectionFailed = false;
     private volatile boolean usingNewAPI = false;
 
-    public NexoBackend(JavaPlugin plugin) {
+    public NexoBackend(OakMobDrops plugin) {
         this.plugin = plugin;
-        this.debugMode = plugin.getConfig().getBoolean("settings.debug", false);
         initializeReflection();
         registerItemsLoadedListener();
     }
@@ -72,7 +64,7 @@ public class NexoBackend implements DropBackend {
 
         } catch (Exception e) {
             reflectionFailed = true;
-            if (debugMode) {
+            if (plugin.isDebugMode()) {
                 plugin.getLogger().warning("[Nexo Backend] Reflection initialization failed: " + e.getMessage());
             }
         }
@@ -98,7 +90,7 @@ public class NexoBackend implements DropBackend {
                     EventPriority.NORMAL,
                     (listener, event) -> {
                         itemsReady = true;
-                        if (debugMode) {
+                        if (plugin.isDebugMode()) {
                             plugin.getLogger().info("[Nexo Backend] Items loaded and ready");
                         }
                     },
@@ -127,31 +119,6 @@ public class NexoBackend implements DropBackend {
         return buildItemStack(spec);
     }
 
-    @Override
-    public boolean give(Player player, DropSpec spec) {
-        ItemStack item = buildItemStack(spec);
-        if (item == null) {
-            return false;
-        }
-
-        Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
-        if (!leftovers.isEmpty()) {
-            leftovers.values().forEach(stack ->
-                player.getWorld().dropItemNaturally(player.getLocation(), stack));
-        }
-        return true;
-    }
-
-    @Override
-    public boolean drop(Location location, DropSpec spec) {
-        ItemStack item = buildItemStack(spec);
-        if (item == null) {
-            return false;
-        }
-        location.getWorld().dropItemNaturally(location, item);
-        return true;
-    }
-
     /**
      * Build an ItemStack using Nexo API.
      * @param spec the drop specification
@@ -166,7 +133,7 @@ public class NexoBackend implements DropBackend {
         try {
             Object builder = getBuilder(spec.id());
             if (builder == null) {
-                if (!itemsReady && debugMode) {
+                if (!itemsReady && plugin.isDebugMode()) {
                     plugin.getLogger().fine("[Nexo] Items not ready yet: " + spec.id());
                 }
                 return null;
@@ -197,7 +164,7 @@ public class NexoBackend implements DropBackend {
             }
 
         } catch (Exception e) {
-            if (debugMode) {
+            if (plugin.isDebugMode()) {
                 plugin.getLogger().warning("[Nexo] Failed to build item '" + spec.id() +
                         "': " + e.getClass().getSimpleName() + " - " + e.getMessage());
             }
@@ -274,6 +241,7 @@ public class NexoBackend implements DropBackend {
      * @param itemId the item ID
      * @return the display name, or null if not found
      */
+    @Override
     @Nullable
     public Component getDisplayName(String itemId) {
         if (!isPresent() || itemId == null) {
@@ -324,7 +292,7 @@ public class NexoBackend implements DropBackend {
             }
 
         } catch (Exception e) {
-            if (debugMode) {
+            if (plugin.isDebugMode()) {
                 plugin.getLogger().fine("[Nexo] Failed to get display name: " + e.getMessage());
             }
         }
@@ -338,6 +306,7 @@ public class NexoBackend implements DropBackend {
      * @param itemId the item ID
      * @return the lore, or null if not found
      */
+    @Override
     @Nullable
     @SuppressWarnings("unchecked")
     public List<Component> getLore(String itemId) {
@@ -388,7 +357,7 @@ public class NexoBackend implements DropBackend {
             }
 
         } catch (Exception e) {
-            if (debugMode) {
+            if (plugin.isDebugMode()) {
                 plugin.getLogger().fine("[Nexo] Failed to get lore: " + e.getMessage());
             }
         }
