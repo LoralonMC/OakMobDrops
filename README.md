@@ -10,7 +10,7 @@ Advanced custom mob drop system with multi-backend support, announcements, and c
 - **Spawner tracking** to control drops from spawner-spawned mobs, with slime split inheritance
 - **Announcement system** using MiniMessage format with item hover tooltips
 - **Command execution** on drop success with placeholder support (DiscordSRV, economy, etc.)
-- **Comprehensive statistics** with per-player breakdowns, rarest drops, expected vs actual rates
+- **Comprehensive statistics** with per-player breakdowns, rarest drops, expected vs actual rates, and JSON or SQLite storage backends
 - **PlaceholderAPI integration** with 6 placeholders for scoreboards and other plugins
 - **Config-driven messages** — all player-facing text is customizable via config.yml
 
@@ -39,6 +39,7 @@ Advanced custom mob drop system with multi-backend support, announcements, and c
 | `/omd stats player <name>` | View detailed player statistics | `oakmobdrops.stats` |
 | `/omd test <mob> <drop> [player] [--full]` | Test a drop (`--full` fires announcements and records stats) | `oakmobdrops.test` |
 | `/omd clearstats` | Reset all statistics (requires confirmation) | `oakmobdrops.clearstats` |
+| `/omd migrate <json\|sqlite>` | Migrate statistics between storage backends | `oakmobdrops.migrate` |
 
 **Aliases**: `/oakmobdrops`, `/mobdrops`
 
@@ -53,6 +54,7 @@ Advanced custom mob drop system with multi-backend support, announcements, and c
 | `oakmobdrops.stats` | View statistics | op |
 | `oakmobdrops.test` | Test drops | op |
 | `oakmobdrops.clearstats` | Clear all statistics | op |
+| `oakmobdrops.migrate` | Migrate statistics storage | op |
 
 ## Configuration
 
