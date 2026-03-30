@@ -11,7 +11,8 @@ import dev.oakheart.oakmobdrops.data.StatisticsDataStore;
 import dev.oakheart.oakmobdrops.statistics.DropStatistics;
 import dev.oakheart.oakmobdrops.OakMobDrops;
 import dev.oakheart.oakmobdrops.backend.DropBackend;
-import dev.oakheart.oakmobdrops.message.MessageManager;
+import dev.oakheart.command.CommandRegistrar;
+import dev.oakheart.message.MessageManager;
 import dev.oakheart.oakmobdrops.model.DropEntry;
 import dev.oakheart.oakmobdrops.model.DropSpec;
 import dev.oakheart.oakmobdrops.model.MobDropConfig;
@@ -22,8 +23,6 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.command.brigadier.argument.ArgumentTypes;
 import io.papermc.paper.command.brigadier.argument.resolvers.selector.PlayerSelectorArgumentResolver;
-import io.papermc.paper.plugin.lifecycle.event.LifecycleEventManager;
-import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.Context;
@@ -36,8 +35,6 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.Plugin;
-
 import java.io.File;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -62,11 +59,7 @@ public class OakMobDropsCommand {
     }
 
     public void register() {
-        LifecycleEventManager<Plugin> manager = plugin.getLifecycleManager();
-        manager.registerEventHandler(LifecycleEvents.COMMANDS, event -> {
-            Commands commands = event.registrar();
-            commands.register(buildCommand(), "OakMobDrops management", List.of("omd", "mobdrops"));
-        });
+        CommandRegistrar.register(plugin, buildCommand(), "OakMobDrops management", List.of("omd", "mobdrops"));
     }
 
     private LiteralCommandNode<CommandSourceStack> buildCommand() {
@@ -223,27 +216,29 @@ public class OakMobDropsCommand {
     // ===== Help =====
 
     private void showHelp(CommandSender sender) {
-        messageManager.sendHelpHeader(sender, plugin.getPluginMeta().getVersion());
+        messageManager.sendCommand(sender, "help-header",
+                Placeholder.unparsed("version", plugin.getPluginMeta().getVersion()));
         if (sender.hasPermission("oakmobdrops.reload")) {
-            messageManager.sendHelpReload(sender);
+            messageManager.sendCommand(sender, "help-reload");
         }
         if (sender.hasPermission("oakmobdrops.stats")) {
-            messageManager.sendHelpStats(sender);
-            messageManager.sendHelpStatsPlayer(sender);
+            messageManager.sendCommand(sender, "help-stats");
+            messageManager.sendCommand(sender, "help-stats-player");
         }
         if (sender.hasPermission("oakmobdrops.test")) {
-            messageManager.sendHelpTest(sender);
+            messageManager.sendCommand(sender, "help-test");
         }
         if (sender.hasPermission("oakmobdrops.clearstats")) {
-            messageManager.sendHelpClearstats(sender);
+            messageManager.sendCommand(sender, "help-clearstats");
         }
         if (sender.hasPermission("oakmobdrops.list")) {
-            messageManager.sendHelpList(sender);
+            messageManager.sendCommand(sender, "help-list");
         }
         if (sender.hasPermission("oakmobdrops.migrate")) {
-            messageManager.sendHelpMigrate(sender);
+            messageManager.sendCommand(sender, "help-migrate");
         }
-        messageManager.sendHelpConfiguredMobs(sender, plugin.getMobConfigs().size());
+        messageManager.sendCommand(sender, "help-configured-mobs",
+                Placeholder.unparsed("count", String.valueOf(plugin.getMobConfigs().size())));
     }
 
     // ===== Reload =====
@@ -254,12 +249,12 @@ public class OakMobDropsCommand {
             if (success) {
                 plugin.loadConfiguration();
                 invalidateDropResolverCache();
-                messageManager.sendReloadSuccess(sender);
+                messageManager.sendCommand(sender, "reload-success");
             } else {
-                messageManager.sendReloadFailed(sender);
+                messageManager.sendCommand(sender, "reload-failed");
             }
         } catch (Exception e) {
-            messageManager.sendReloadFailed(sender);
+            messageManager.sendCommand(sender, "reload-failed");
             plugin.getLogger().warning("Reload error: " + e.getMessage());
         }
     }
@@ -279,7 +274,7 @@ public class OakMobDropsCommand {
     private void handleStats(CommandSender sender, DropStatistics.ReportType reportType, int page) {
         DropStatistics statistics = plugin.getStatistics();
         if (statistics == null || !plugin.isStatisticsEnabled()) {
-            messageManager.sendStatsDisabled(sender);
+            messageManager.sendCommand(sender, "stats-disabled");
             return;
         }
 
@@ -303,31 +298,31 @@ public class OakMobDropsCommand {
 
             StringBuilder nav = new StringBuilder();
             if (report.currentPage() > 1) {
-                String prevText = messageManager.getText("pagination-prev");
+                String prevText = messageManager.getConfig().getString("commands.pagination-prev", "");
                 nav.append("<click:run_command:'/omd stats ").append(typeArg).append(" ")
                         .append(report.currentPage() - 1).append("'>")
                         .append(prevText).append("</click>");
             } else {
-                nav.append(messageManager.getText("pagination-prev-disabled"));
+                nav.append(messageManager.getConfig().getString("commands.pagination-prev-disabled", ""));
             }
 
             nav.append(" ");
-            Optional<Component> pageComponent = messageManager.parse("pagination-page",
-                    Placeholder.unparsed("current", String.valueOf(report.currentPage())),
-                    Placeholder.unparsed("total", String.valueOf(report.totalPages())));
-            String pageText = pageComponent
-                    .map(c -> MiniMessage.miniMessage().serialize(c))
-                    .orElse("");
-            nav.append(pageText);
+            String pageTemplate = messageManager.getConfig().getString("commands.pagination-page", "");
+            if (!pageTemplate.isEmpty()) {
+                Component pageComponent = MiniMessage.miniMessage().deserialize(pageTemplate,
+                        Placeholder.unparsed("current", String.valueOf(report.currentPage())),
+                        Placeholder.unparsed("total", String.valueOf(report.totalPages())));
+                nav.append(MiniMessage.miniMessage().serialize(pageComponent));
+            }
             nav.append(" ");
 
             if (report.currentPage() < report.totalPages()) {
-                String nextText = messageManager.getText("pagination-next");
+                String nextText = messageManager.getConfig().getString("commands.pagination-next", "");
                 nav.append("<click:run_command:'/omd stats ").append(typeArg).append(" ")
                         .append(report.currentPage() + 1).append("'>")
                         .append(nextText).append("</click>");
             } else {
-                nav.append(messageManager.getText("pagination-next-disabled"));
+                nav.append(messageManager.getConfig().getString("commands.pagination-next-disabled", ""));
             }
 
             sender.sendMessage(miniMessage.deserialize(nav.toString()));
@@ -337,13 +332,14 @@ public class OakMobDropsCommand {
     private void handlePlayerStats(CommandSender sender, String playerName) {
         DropStatistics statistics = plugin.getStatistics();
         if (statistics == null || !plugin.isStatisticsEnabled()) {
-            messageManager.sendStatsDisabled(sender);
+            messageManager.sendCommand(sender, "stats-disabled");
             return;
         }
 
         List<String> report = statistics.generatePlayerReport(playerName);
         if (report == null) {
-            messageManager.sendStatsPlayerNotFound(sender, playerName);
+            messageManager.sendCommand(sender, "stats-player-not-found",
+                    Placeholder.unparsed("player", playerName));
             return;
         }
 
@@ -366,7 +362,7 @@ public class OakMobDropsCommand {
             if (sender instanceof Player p) {
                 target = p;
             } else {
-                messageManager.sendOnlyPlayers(sender);
+                messageManager.sendCommand(sender, "only-players");
                 return Command.SINGLE_SUCCESS;
             }
         }
@@ -375,13 +371,15 @@ public class OakMobDropsCommand {
         try {
             mobType = EntityType.valueOf(mobArg.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            messageManager.sendInvalidMobType(sender, mobArg);
+            messageManager.sendCommand(sender, "invalid-mob-type",
+                    Placeholder.unparsed("mob", mobArg));
             return Command.SINGLE_SUCCESS;
         }
 
         MobDropConfig config = plugin.getMobConfigs().get(mobType);
         if (config == null) {
-            messageManager.sendNoConfigForMob(sender, mobType.name());
+            messageManager.sendCommand(sender, "no-config-for-mob",
+                    Placeholder.unparsed("mob", mobType.name()));
             return Command.SINGLE_SUCCESS;
         }
 
@@ -391,7 +389,9 @@ public class OakMobDropsCommand {
                 .orElse(null);
 
         if (dropEntry == null) {
-            messageManager.sendDropNotFound(sender, dropId, mobType.name());
+            messageManager.sendCommand(sender, "drop-not-found",
+                    Placeholder.unparsed("drop", dropId),
+                    Placeholder.unparsed("mob", mobType.name()));
             return Command.SINGLE_SUCCESS;
         }
 
@@ -415,8 +415,10 @@ public class OakMobDropsCommand {
         ItemStack built = backend.createItem(specWithAmount, dropEntry.dropAtLocation() ? null : target);
 
         if (built == null) {
-            messageManager.sendTestBuildFailed(sender, dropEntry.id(), backend.getName(),
-                    backend.isPresent() ? "yes" : "no");
+            messageManager.sendCommand(sender, "test-build-failed",
+                    Placeholder.unparsed("drop", dropEntry.id()),
+                    Placeholder.unparsed("backend", backend.getName()),
+                    Placeholder.unparsed("available", backend.isPresent() ? "yes" : "no"));
             plugin.getLogger().warning("[Test] Failed to process item '" + dropEntry.id() +
                     "' using " + backend.getName() + " backend (present=" + backend.isPresent() +
                     ", itemId=" + specWithAmount.id() + ")");
@@ -452,7 +454,10 @@ public class OakMobDropsCommand {
                     itemName, amount, dropEntry.chance());
         }
 
-        messageManager.sendTestSuccessFull(sender, buildDropComponent(dropEntry), amount, target.getName());
+        messageManager.sendCommand(sender, "test-success-full",
+                Placeholder.component("drop", buildDropComponent(dropEntry)),
+                Placeholder.unparsed("amount", String.valueOf(amount)),
+                Placeholder.unparsed("player", target.getName()));
     }
 
     private void executeSimpleTest(CommandSender sender, Player target, DropEntry dropEntry, int amount) {
@@ -461,10 +466,14 @@ public class OakMobDropsCommand {
         boolean success = backend.give(target, spec);
 
         if (success) {
-            messageManager.sendTestSuccessSimple(sender, buildDropComponent(dropEntry), target.getName());
+            messageManager.sendCommand(sender, "test-success-simple",
+                    Placeholder.component("drop", buildDropComponent(dropEntry)),
+                    Placeholder.unparsed("player", target.getName()));
         } else {
-            messageManager.sendTestBuildFailed(sender, dropEntry.id(), backend.getName(),
-                    backend.isPresent() ? "yes" : "no");
+            messageManager.sendCommand(sender, "test-build-failed",
+                    Placeholder.unparsed("drop", dropEntry.id()),
+                    Placeholder.unparsed("backend", backend.getName()),
+                    Placeholder.unparsed("available", backend.isPresent() ? "yes" : "no"));
             plugin.getLogger().warning("[Test] Failed to process item '" + dropEntry.id() +
                     "' using " + backend.getName() + " backend (present=" + backend.isPresent() +
                     ", itemId=" + spec.id() + ")");
@@ -476,7 +485,7 @@ public class OakMobDropsCommand {
     private void handleClearStats(CommandSender sender, boolean confirmed) {
         DropStatistics statistics = plugin.getStatistics();
         if (statistics == null) {
-            messageManager.sendStatsDisabled(sender);
+            messageManager.sendCommand(sender, "stats-disabled");
             return;
         }
 
@@ -489,23 +498,24 @@ public class OakMobDropsCommand {
             if (sender instanceof Player player) {
                 Long timestamp = clearStatsTimestamps.remove(player.getUniqueId());
                 if (timestamp == null) {
-                    messageManager.sendClearstatsExpired(sender);
+                    messageManager.sendCommand(sender, "clearstats-expired");
                     return;
                 }
             }
 
             String backupPath = statistics.backupBeforeReset();
             if (backupPath != null) {
-                messageManager.sendClearstatsBackup(sender, backupPath);
+                messageManager.sendCommand(sender, "clearstats-backup",
+                        Placeholder.unparsed("path", backupPath));
             }
             statistics.reset();
-            messageManager.sendClearstatsConfirmed(sender);
+            messageManager.sendCommand(sender, "clearstats-confirmed");
         } else {
             // Record timestamp for timeout validation
             if (sender instanceof Player player) {
                 clearStatsTimestamps.put(player.getUniqueId(), now);
             }
-            messageManager.sendClearstatsWarning(sender);
+            messageManager.sendCommand(sender, "clearstats-warning");
         }
     }
 
@@ -513,23 +523,26 @@ public class OakMobDropsCommand {
 
     private void handleMigrate(CommandSender sender, String targetType) {
         if (!"json".equals(targetType) && !"sqlite".equals(targetType)) {
-            messageManager.sendMigrateFailed(sender, "Invalid type. Use 'json' or 'sqlite'.");
+            messageManager.sendCommand(sender, "migrate-failed",
+                    Placeholder.unparsed("error", "Invalid type. Use 'json' or 'sqlite'."));
             return;
         }
 
         DropStatistics statistics = plugin.getStatistics();
         if (statistics == null || !plugin.isStatisticsEnabled()) {
-            messageManager.sendStatsDisabled(sender);
+            messageManager.sendCommand(sender, "stats-disabled");
             return;
         }
 
         String currentType = plugin.getConfigManager().getStorageType();
         if (currentType.equals(targetType)) {
-            messageManager.sendMigrateSameType(sender, targetType);
+            messageManager.sendCommand(sender, "migrate-same-type",
+                    Placeholder.unparsed("type", targetType));
             return;
         }
 
-        messageManager.sendMigrateStarted(sender, targetType);
+        messageManager.sendCommand(sender, "migrate-started",
+                Placeholder.unparsed("target", targetType));
 
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
@@ -570,12 +583,14 @@ public class OakMobDropsCommand {
                 // Update config on main thread
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     plugin.getConfigManager().setStorageType(targetType);
-                    messageManager.sendMigrateSuccess(sender, migratedName);
+                    messageManager.sendCommand(sender, "migrate-success",
+                            Placeholder.unparsed("backup", migratedName));
                 });
             } catch (Exception e) {
                 plugin.getLogger().log(Level.WARNING, "Migration failed", e);
                 Bukkit.getScheduler().runTask(plugin, () ->
-                        messageManager.sendMigrateFailed(sender, e.getMessage()));
+                        messageManager.sendCommand(sender, "migrate-failed",
+                                Placeholder.unparsed("error", e.getMessage())));
             }
         });
     }
@@ -585,11 +600,11 @@ public class OakMobDropsCommand {
     private void handleList(CommandSender sender) {
         Map<EntityType, MobDropConfig> configs = plugin.getMobConfigs();
         if (configs.isEmpty()) {
-            messageManager.sendNoDropsConfigured(sender);
+            messageManager.sendCommand(sender, "no-drops-configured");
             return;
         }
 
-        messageManager.sendListHeader(sender);
+        messageManager.sendCommand(sender, "list-header");
 
         configs.entrySet().stream()
                 .sorted(Comparator.comparing(e -> e.getKey().name()))
@@ -605,20 +620,20 @@ public class OakMobDropsCommand {
                         flags = flags.append(miniMessage.deserialize(" <#6C757D>[spawner-ok]"));
                     }
 
-                    messageManager.sendListMob(sender,
-                            FormatUtils.formatEntityName(mobType),
-                            String.valueOf(config.drops().size()),
-                            flags);
+                    messageManager.sendCommand(sender, "list-mob",
+                            Placeholder.unparsed("mob", FormatUtils.formatEntityName(mobType)),
+                            Placeholder.unparsed("count", String.valueOf(config.drops().size())),
+                            Placeholder.component("flags", flags));
 
                     for (DropEntry drop : config.drops()) {
                         String amountRange = drop.minAmount() == drop.maxAmount()
                                 ? String.valueOf(drop.minAmount())
                                 : drop.minAmount() + "-" + drop.maxAmount();
-                        messageManager.sendListDrop(sender,
-                                buildDropComponent(drop),
-                                drop.spec().type().name(),
-                                FormatUtils.formatStatPercent(drop.chance() * 100),
-                                amountRange);
+                        messageManager.sendCommand(sender, "list-drop",
+                                Placeholder.component("drop_id", buildDropComponent(drop)),
+                                Placeholder.unparsed("type", drop.spec().type().name()),
+                                Placeholder.unparsed("chance", FormatUtils.formatStatPercent(drop.chance() * 100)),
+                                Placeholder.unparsed("amount", amountRange));
                     }
                 });
     }

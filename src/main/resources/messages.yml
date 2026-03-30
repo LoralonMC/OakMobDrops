@@ -1,0 +1,84 @@
+# ============================================================
+# OakMobDrops Messages
+# ============================================================
+# All player-facing messages use MiniMessage format.
+# https://docs.advntr.dev/minimessage/format.html
+#
+# Set any message to "" to disable it.
+
+# ============================================================
+# COMMAND MESSAGES
+# ============================================================
+# Flat strings, always delivered via chat.
+commands:
+  # --- Help ---
+  # Placeholders: <version>
+  help-header: "<#FCD472><bold>=== OakMobDrops v<version> ===</bold>"
+  help-reload: "<#FCD472>/omd reload <#6C757D>- <#f2ebd7>Reload configuration"
+  help-stats: "<#FCD472>/omd stats [type] [page] <#6C757D>- <#f2ebd7>View statistics"
+  help-stats-player: "<#FCD472>/omd stats player \\<name\\> <#6C757D>- <#f2ebd7>View player stats"
+  help-test: "<#FCD472>/omd test \\<mob\\> \\<drop\\> [player] [--full] <#6C757D>- <#f2ebd7>Test a drop"
+  help-clearstats: "<#FCD472>/omd clearstats <#6C757D>- <#f2ebd7>Reset all statistics"
+  help-list: "<#FCD472>/omd list <#6C757D>- <#f2ebd7>Show configured mob drops"
+  help-migrate: "<#FCD472>/omd migrate \\<json|sqlite\\> <#6C757D>- <#f2ebd7>Migrate statistics storage"
+  # Placeholders: <count>
+  help-configured-mobs: "<#6C757D>Configured mobs: <#f2ebd7><count>"
+
+  # --- List ---
+  list-header: "<#FCD472><bold>=== Configured Mob Drops ===</bold>"
+  # Placeholders: <mob>, <count>, <flags>
+  list-mob: "<#FCD472><mob> <#6C757D>(<count> drops)<flags>"
+  # Placeholders: <drop_id>, <type>, <chance>, <amount>
+  list-drop: "  <#6C757D>- <#8FAA87><drop_id> <#6C757D>[<type>] <#f2ebd7><chance> <#6C757D>x<amount>"
+
+  # --- Pagination ---
+  pagination-prev: "<hover:show_text:'<#6C757D>Previous page'><#FCD472>[<< ᴘʀᴇᴠ]</hover>"
+  pagination-next: "<hover:show_text:'<#6C757D>Next page'><#FCD472>[ɴᴇxᴛ >>]</hover>"
+  # Placeholders: <current>, <total>
+  pagination-page: "<#6C757D>Page <current> of <total>"
+  pagination-prev-disabled: "<#6C757D>[<< ᴘʀᴇᴠ]"
+  pagination-next-disabled: "<#6C757D>[ɴᴇxᴛ >>]"
+
+  # --- Reload ---
+  reload-success: "<#6C757D>[<#6B7A5E>ᴅʀᴏᴘꜱ<#6C757D>] <#8FAA87>Configuration reloaded successfully."
+  reload-failed: "<#6C757D>[<#C27B6B>ᴇʀʀᴏʀ<#6C757D>] <#C27B6B>Configuration reload failed. Keeping previous config."
+
+  # --- Errors ---
+  stats-disabled: "<#6C757D>[<#C27B6B>ᴇʀʀᴏʀ<#6C757D>] <#C27B6B>Statistics tracking is disabled."
+  # Placeholders: <mob>
+  invalid-mob-type: "<#6C757D>[<#C27B6B>ᴇʀʀᴏʀ<#6C757D>] <#C27B6B>Invalid mob type: <#FCD472><mob><#C27B6B>."
+  no-config-for-mob: "<#6C757D>[<#C27B6B>ᴇʀʀᴏʀ<#6C757D>] <#C27B6B>No configuration for mob: <#FCD472><mob><#C27B6B>."
+  # Placeholders: <drop>, <mob>
+  drop-not-found: "<#6C757D>[<#C27B6B>ᴇʀʀᴏʀ<#6C757D>] <#C27B6B>Drop '<#FCD472><drop><#C27B6B>' not found for <#FCD472><mob><#C27B6B>."
+  player-not-found: "<#6C757D>[<#C27B6B>ᴇʀʀᴏʀ<#6C757D>] <#C27B6B>Player not found."
+  # Placeholders: <player>
+  stats-player-not-found: "<#6C757D>[<#C27B6B>ᴇʀʀᴏʀ<#6C757D>] <#C27B6B>No statistics found for player '<#FCD472><player><#C27B6B>'."
+
+  # --- Test ---
+  # Placeholders: <drop>, <player>
+  test-success-simple: "<#6C757D>[<#6B7A5E>ᴅʀᴏᴘꜱ<#6C757D>] <#8FAA87>Gave <#FCD472><drop><#8FAA87> to <#FCD472><player><#8FAA87>."
+  # Placeholders: <drop>, <amount>, <player>
+  test-success-full: "<#6C757D>[<#6B7A5E>ᴅʀᴏᴘꜱ<#6C757D>] <#8FAA87>Full test: gave <#FCD472><drop><#8FAA87> x<#FCD472><amount><#8FAA87> to <#FCD472><player><#8FAA87> (with announcements, stats, commands)."
+  # Placeholders: <drop>, <backend>, <available>
+  test-build-failed: "<#6C757D>[<#C27B6B>ᴇʀʀᴏʀ<#6C757D>] <#C27B6B>Failed to build '<#FCD472><drop><#C27B6B>' using <#FCD472><backend><#C27B6B> backend (available: <#FCD472><available><#C27B6B>)."
+
+  # --- Clearstats ---
+  clearstats-warning: "<#6C757D>[<#6B7A5E>ᴅʀᴏᴘꜱ<#6C757D>] <#D89B6A>This will permanently clear ALL statistics data! <click:run_command:'/omd clearstats confirm'><hover:show_text:'<#C27B6B>This action cannot be undone'><#FCD472>[ᴄʟɪᴄᴋ ᴛᴏ ᴄᴏɴꜰɪʀᴍ]</hover></click> <#6C757D>(30 seconds)"
+  clearstats-confirmed: "<#6C757D>[<#6B7A5E>ᴅʀᴏᴘꜱ<#6C757D>] <#8FAA87>Statistics have been reset."
+  clearstats-expired: "<#6C757D>[<#C27B6B>ᴇʀʀᴏʀ<#6C757D>] <#C27B6B>Confirmation expired. Run <#FCD472>/omd clearstats<#C27B6B> again."
+  # Placeholders: <path>
+  clearstats-backup: "<#6C757D>[<#6B7A5E>ᴅʀᴏᴘꜱ<#6C757D>] <#f2ebd7>Backup saved to: <#FCD472><path><#f2ebd7>."
+
+  # --- Migrate ---
+  # Placeholders: <target>
+  migrate-started: "<#6C757D>[<#6B7A5E>ᴅʀᴏᴘꜱ<#6C757D>] <#f2ebd7>Migrating statistics to <#FCD472><target><#f2ebd7>..."
+  # Placeholders: <backup>
+  migrate-success: "<#6C757D>[<#6B7A5E>ᴅʀᴏᴘꜱ<#6C757D>] <#8FAA87>Migration complete. <#f2ebd7>Old data backed up as <#FCD472><backup><#f2ebd7>."
+  # Placeholders: <error>
+  migrate-failed: "<#6C757D>[<#C27B6B>ᴇʀʀᴏʀ<#6C757D>] <#C27B6B>Migration failed: <#FCD472><error>"
+  # Placeholders: <type>
+  migrate-same-type: "<#6C757D>[<#6B7A5E>ᴅʀᴏᴘꜱ<#6C757D>] <#D89B6A>Already using <#FCD472><type><#D89B6A> storage."
+
+  # --- Misc ---
+  no-drops-configured: "<#6C757D>[<#6B7A5E>ᴅʀᴏᴘꜱ<#6C757D>] <#D89B6A>No mob drops configured."
+  only-players: "<#6C757D>[<#C27B6B>ᴇʀʀᴏʀ<#6C757D>] <#C27B6B>This command can only be used by players."

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Migrate MessageManager to OakheartLib shared library (`dev.oakheart.message.MessageManager`)
+- Migrate command registration boilerplate to OakheartLib `CommandRegistrar`
+- Migrate config merging and targeted config writes to OakheartLib `ConfigManager`
+- Add OakheartLib `DebugLogger` for gated debug logging
+- Move messages from `config.yml` to dedicated `messages.yml` (auto-migrated on first startup)
+
 ## [1.2.0] - 2026-02-22
 
 ### Added

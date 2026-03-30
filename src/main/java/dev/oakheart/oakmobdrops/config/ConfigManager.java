@@ -12,10 +12,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class ConfigManager {
@@ -88,28 +88,19 @@ public class ConfigManager {
     private void mergeDefaults() {
         try (var stream = plugin.getResource("config.yml")) {
             if (stream != null) {
-                YamlConfiguration defaults = YamlConfiguration.loadConfiguration(
-                        new InputStreamReader(stream, StandardCharsets.UTF_8));
-                config.setDefaults(defaults);
+                var defaults = dev.oakheart.config.ConfigManager.fromStream(stream);
+                var current = dev.oakheart.config.ConfigManager.load(configFile.toPath());
 
-                if (hasNewKeys(defaults)) {
-                    config.options().copyDefaults(true);
-                    config.save(configFile);
+                if (current.mergeDefaults(defaults)) {
+                    current.save();
+                    // Reload the Bukkit config since the file changed
+                    config = YamlConfiguration.loadConfiguration(configFile);
                     logger.info("Config updated with new default values.");
                 }
             }
         } catch (IOException e) {
             logger.warning("Could not save config defaults: " + e.getMessage());
         }
-    }
-
-    private boolean hasNewKeys(FileConfiguration defaults) {
-        for (String key : defaults.getKeys(true)) {
-            if (!defaults.isConfigurationSection(key) && !config.contains(key, true)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static final int SUPPORTED_CONFIG_VERSION = 1;
@@ -287,32 +278,18 @@ public class ConfigManager {
 
     /**
      * Update storage-type in both the in-memory config and the raw file.
-     * Uses targeted line replacement to avoid SnakeYAML reformatting the entire file.
+     * Uses the library's ConfigManager for format-preserving targeted write.
      */
     public void setStorageType(String type) {
         this.storageType = type;
         config.set("settings.storage-type", type);
 
         try {
-            List<String> lines = Files.readAllLines(configFile.toPath(), StandardCharsets.UTF_8);
-            boolean found = false;
-            for (int i = 0; i < lines.size(); i++) {
-                if (lines.get(i).trim().startsWith("storage-type:")) {
-                    String original = lines.get(i);
-                    String indent = original.substring(0, original.indexOf("storage-type:"));
-                    lines.set(i, indent + "storage-type: " + type);
-                    found = true;
-                    break;
-                }
-            }
-            if (found) {
-                Files.write(configFile.toPath(), lines, StandardCharsets.UTF_8);
-            } else {
-                // Don't fall back to config.save() — it reformats the entire file
-                logger.warning("Could not find storage-type in config.yml — in-memory value updated but file not written. Add 'storage-type: " + type + "' under settings: manually.");
-            }
+            var libConfig = dev.oakheart.config.ConfigManager.load(configFile.toPath());
+            libConfig.set("settings.storage-type", type);
+            libConfig.save();
         } catch (IOException e) {
-            logger.warning("Failed to save config after storage type change: " + e.getMessage());
+            logger.log(Level.WARNING, "Failed to save config after storage type change", e);
         }
     }
 

@@ -9,7 +9,8 @@ import dev.oakheart.oakmobdrops.data.SQLiteStatisticsDataStore;
 import dev.oakheart.oakmobdrops.data.StatisticsDataStore;
 import dev.oakheart.oakmobdrops.drop.DropProcessor;
 import dev.oakheart.oakmobdrops.listeners.MobDropListener;
-import dev.oakheart.oakmobdrops.message.MessageManager;
+import dev.oakheart.message.MessageManager;
+import dev.oakheart.util.DebugLogger;
 import dev.oakheart.oakmobdrops.model.*;
 import dev.oakheart.oakmobdrops.statistics.DropStatistics;
 import dev.oakheart.oakmobdrops.util.CommandExecutor;
@@ -41,6 +42,7 @@ public final class OakMobDrops extends JavaPlugin {
     private DropStatistics statistics;
     private MiniMessage miniMessage;
     private CommandExecutor commandExecutor;
+    private DebugLogger debugLogger;
 
     // Spawner tracking
     private NamespacedKey spawnerMobKey;
@@ -92,8 +94,10 @@ public final class OakMobDrops extends JavaPlugin {
         configManager = new ConfigManager(this);
         configManager.load();
 
-        messageManager = new MessageManager();
-        messageManager.load(configManager.getConfig());
+        messageManager = new MessageManager(this, getLogger());
+        messageManager.load();
+
+        debugLogger = new DebugLogger(getLogger(), configManager::isDebug);
 
         // Load all components from configuration
         loadConfiguration();
@@ -171,7 +175,7 @@ public final class OakMobDrops extends JavaPlugin {
 
         // Reload messages
         if (messageManager != null) {
-            messageManager.load(configManager.getConfig());
+            messageManager.reload();
         }
 
         // Read cached values from ConfigManager
@@ -365,6 +369,10 @@ public final class OakMobDrops extends JavaPlugin {
 
     public MessageManager getMessageManager() {
         return messageManager;
+    }
+
+    public DebugLogger getDebugLogger() {
+        return debugLogger;
     }
 
     public boolean isStatisticsEnabled() {
