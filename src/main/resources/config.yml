@@ -1,6 +1,6 @@
 # ============================================================
 # OakMobDrops Configuration
-# Paper 1.21.10 | Supports ExecutableItems, ItemsAdder, Nexo, and vanilla items
+# Paper 1.21.10 | Supports ExecutableItems, ItemsAdder, Nexo, OakPets, and vanilla items
 # ============================================================
 
 # ============================================================
@@ -37,8 +37,6 @@ settings:
   enable-statistics: true
 
   # Storage backend for statistics: "json" or "sqlite"
-  # Use "json" for simplicity (human-readable file)
-  # Use "sqlite" for better performance on large servers
   storage-type: json
 
   # Auto-save interval in minutes (0 = only save on shutdown)
@@ -56,6 +54,13 @@ settings:
 # Each mob can have multiple drops with independent chances.
 # Entity types: https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/entity/EntityType.html
 #
+# Drop types:
+#   VANILLA           - Standard Minecraft items (material, name, lore)
+#   EXECUTABLE_ITEMS  - ExecutableItems plugin items (item-id)
+#   ITEMSADDER        - ItemsAdder plugin items (item-id)
+#   NEXO              - Nexo plugin items (item-id)
+#   OAKPETS           - OakPets pet vouchers (item-id = pet definition ID)
+#
 # Drop formats:
 #   List format (indexed):   drops: [ {id: ..., chance: ...}, ... ]
 #   Section format (named):  drops: { pet_drop: {chance: ...}, ... }
@@ -63,93 +68,20 @@ settings:
 # Amount can be a range: "5-10" for random amounts.
 # Announcement: null = no message, "global" = use global announcement, or a custom string.
 mobs:
-  ZOMBIE:
-    enabled: true
-    require-player-kill: true
-    allow-spawner-drops: false
-    drops:
-      - id: zombie_pet
-        chance: 0.0001  # 0.01% = 1 in 10,000
-        type: NEXO
-        item-id: nm_plushie_zombie
-        amount: 1
-        drop-at-location: true
-        announcement: "<#6B7A5E><bold>🧟 ZOMBIE PET!</bold> <#FCD472><player><#f2ebd7> tamed an undead companion!"
-        play-sound: true
-        commands:
-          - "discordsrv broadcast 🎉 <player> just received a <item> from a <mob>! (<chance_fraction>)"
-
-      - id: zombie_essence
-        chance: 0.05  # 5%
-        type: EXECUTABLE_ITEMS
-        item-id: mob_essence
-        amount: 1-3
-        drop-at-location: false
-        announcement: null
-        play-sound: false
-
-      - id: zombie_gold
-        chance: 0.01  # 1%
-        type: VANILLA
-        material: GOLD_NUGGET
-        amount: 1-2
-        name: "<#FCD472>Zombie's Gold"
-        lore:
-          - "<#6C757D>A small piece of gold"
-          - "<#6C757D>dropped by the undead"
-        drop-at-location: true
-        announcement: null
-        play-sound: false
-
-  SKELETON:
-    enabled: true
-    require-player-kill: true
-    allow-spawner-drops: false
-    drops:
-      pet_drop:
-        chance: 0.0001
-        type: NEXO
-        item-id: nm_plushie_skeleton
-        amount: 1
-        drop-at-location: true
-        announcement: "<#6B7A5E><bold>💀 SKELETON PET!</bold> <#FCD472><player><#f2ebd7> acquired a bony friend!"
-        play-sound: true
-
-      bone_shard:
-        chance: 0.15
-        type: ITEMSADDER
-        item-id: custom:bone_shard
-        amount: 2-4
-        drop-at-location: true
-        announcement: null
-        play-sound: false
-
-      arrow_bundle:
-        chance: 0.02
-        type: VANILLA
-        material: ARROW
-        amount: 5-10
-        name: "<#f2ebd7>Skeleton's Quiver"
-        drop-at-location: true
-        announcement: "global"
-        play-sound: true
-
-  CREEPER:
-    enabled: true
-    require-player-kill: true
-    allow-spawner-drops: false
-    drops:
-      pet_drop:
-        chance: 0.001  # 0.1% = 1 in 1,000
-        type: EXECUTABLE_ITEMS
-        item-id: creeper_pet
-        amount: 1
-        drop-at-location: true
-        announcement: "<#6B7A5E><bold>💥</bold> <#FCD472><player><#f2ebd7> obtained a <#8FAA87><item><#f2ebd7> (<#FCD472><chance>%<#f2ebd7> drop rate)!"
-        play-sound: true
-        commands:
-          - "discordsrv broadcast 💥 <player> got a <item>! (<chance>% chance)"
-          - "eco give <player> 500"
+  # Example: Rare pet voucher drop from a mob
+  # ZOMBIE:
+  #   enabled: true
+  #   require-player-kill: true
+  #   allow-spawner-drops: false
+  #   drops:
+  #     pet_voucher:
+  #       chance: 0.0001
+  #       type: OAKPETS
+  #       item-id: clot_the_creaking
+  #       amount: 1
+  #       drop-at-location: false
+  #       announcement: global
+  #       play-sound: true
 
 # ========================================
 #          DO NOT EDIT BELOW

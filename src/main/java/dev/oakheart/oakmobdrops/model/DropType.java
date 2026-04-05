@@ -7,5 +7,6 @@ public enum DropType {
     EXECUTABLE_ITEMS,
     ITEMSADDER,
     NEXO,
+    OAKPETS,
     VANILLA
 }
