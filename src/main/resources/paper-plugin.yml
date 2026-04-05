@@ -17,6 +17,9 @@ dependencies:
     Nexo:
       load: BEFORE
       required: false
+    OakPets:
+      load: BEFORE
+      required: false
     PlaceholderAPI:
       load: BEFORE
       required: false
