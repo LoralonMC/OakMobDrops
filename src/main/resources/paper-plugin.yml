@@ -2,7 +2,7 @@ name: OakMobDrops
 version: '${version}'
 main: dev.oakheart.oakmobdrops.OakMobDrops
 description: 'Advanced mob drop system with multi-backend support and statistics.'
-api-version: '1.21.10'
+api-version: '26.1.2'
 authors:
   - Loralon
 website: https://github.com/LoralonMC/OakMobDrops
