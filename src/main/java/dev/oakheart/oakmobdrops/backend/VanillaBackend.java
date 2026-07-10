@@ -39,7 +39,13 @@ public class VanillaBackend implements DropBackend {
      * @return the constructed ItemStack
      */
     private ItemStack buildItem(DropSpec spec) {
-        Material material = (spec.material() != null) ? spec.material() : Material.STONE;
+        // A VANILLA spec with no material is a config error (usually a typo'd
+        // `type:` falling back to VANILLA). Defaulting to STONE shipped stone
+        // blocks to players silently; failing the build surfaces it in the log.
+        Material material = spec.material();
+        if (material == null) {
+            return null;
+        }
         ItemStack item = new ItemStack(material, Math.max(1, spec.amount()));
 
         var meta = item.getItemMeta();

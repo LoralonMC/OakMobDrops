@@ -25,7 +25,6 @@ public class NexoBackend implements DropBackend {
     private volatile Method apiGetItemName;
     private volatile Method apiGetDisplayName;
     private volatile Method apiGetLore;
-    private volatile Method apiSetAmount;
     private volatile Method apiGetFinalItemStack;
     private volatile Method apiBuild;
     private volatile boolean reflectionInitialized = false;
@@ -139,26 +138,13 @@ public class NexoBackend implements DropBackend {
                 return null;
             }
 
-            // Try to set amount on the builder (try primitive int first, then boxed Integer)
-            if (apiSetAmount == null) {
-                try {
-                    apiSetAmount = builder.getClass().getMethod("setAmount", int.class);
-                } catch (NoSuchMethodException e) {
-                    try {
-                        apiSetAmount = builder.getClass().getMethod("setAmount", Integer.class);
-                    } catch (NoSuchMethodException ignored) {}
-                }
-            }
-
-            if (apiSetAmount != null) {
-                try {
-                    apiSetAmount.invoke(builder, Math.max(1, spec.amount()));
-                } catch (Exception ignored) {}
-            }
-
-            // Get the final item stack
+            // Never mutate the builder: itemFromId returns Nexo's CACHED builder
+            // for that item (not a copy), so a setAmount on it leaks into every
+            // other plugin's subsequent gives of the same Nexo item. Clone the
+            // final stack and set the amount on our own copy only.
             ItemStack stack = getFinalStack(builder);
             if (stack != null) {
+                stack = stack.clone();
                 stack.setAmount(Math.max(1, spec.amount()));
                 return stack;
             }

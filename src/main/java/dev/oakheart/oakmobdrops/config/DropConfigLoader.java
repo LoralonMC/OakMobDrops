@@ -210,6 +210,11 @@ public class DropConfigLoader {
         try {
             dropType = DropType.valueOf(typeStr);
         } catch (IllegalArgumentException ex) {
+            // Loud: a typo'd type used to silently fall back to VANILLA, turning
+            // an EI/Nexo drop into a material-less spec (and, before the
+            // VanillaBackend fix, into STONE handed to players).
+            plugin.getLogger().warning("Unknown drop type '" + typeStr + "' for " + type
+                    + " ; treating as VANILLA. Valid: " + java.util.Arrays.toString(DropType.values()));
             dropType = DropType.VANILLA;
         }
 
@@ -228,6 +233,11 @@ public class DropConfigLoader {
         String name = drop.getString("name");
         List<String> lore = drop.getStringList("lore");
 
+        if (dropType == DropType.VANILLA && material == null) {
+            plugin.getLogger().warning("VANILLA drop for " + type
+                    + " has no (valid) material ; this drop will never build.");
+        }
+
         return new DropSpec(dropType, id, 1, material, name, lore);
     }
 
@@ -237,6 +247,8 @@ public class DropConfigLoader {
         try {
             dropType = DropType.valueOf(typeStr);
         } catch (IllegalArgumentException ex) {
+            plugin.getLogger().warning("Unknown drop type '" + typeStr + "' for " + type
+                    + " ; treating as VANILLA. Valid: " + java.util.Arrays.toString(DropType.values()));
             dropType = DropType.VANILLA;
         }
 
@@ -258,6 +270,11 @@ public class DropConfigLoader {
 
         String name = getMapString(map, "name", null);
         List<String> lore = getMapStringList(map, "lore");
+
+        if (dropType == DropType.VANILLA && material == null) {
+            plugin.getLogger().warning("VANILLA drop for " + type
+                    + " has no (valid) material ; this drop will never build.");
+        }
 
         return new DropSpec(dropType, itemId, 1, material, name, lore);
     }
